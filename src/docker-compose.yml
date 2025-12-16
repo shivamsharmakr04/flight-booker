@@ -1,0 +1,41 @@
+version: '3.8'
+services:
+  mongo:
+    image: mongo:6
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: ./backend/.env.example
+    environment:
+      - MONGO_URI=mongodb://mongo:27017/flightdb
+      - PDF_STORAGE=/app/tickets
+      - FRONTEND_URL=http://localhost:5173
+    volumes:
+      - ./backend:/app
+      - ./backend/tickets:/app/tickets
+    ports:
+      - "4000:4000"
+    depends_on:
+      - mongo
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:4000/api
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:
