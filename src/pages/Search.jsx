@@ -19,7 +19,7 @@ export default function Search({ user, setUser }) {
   const [departureQuery, setDepartureQuery] = useState('');
   const [arrivalQuery, setArrivalQuery] = useState('');
   const [travelDate, setTravelDate] = useState('');
-  const [tripType, setTripType] = useState('oneway'); // oneway or roundtrip
+  const [tripType, setTripType] = useState('oneway');
 
   const debouncedDeparture = useDebounce(departureQuery, 400);
   const debouncedArrival = useDebounce(arrivalQuery, 400);
@@ -29,7 +29,6 @@ export default function Search({ user, setUser }) {
   const navigate = useNavigate();
   const { notify } = useNotify();
 
-  // Filters & sorting
   const [selectedAirline, setSelectedAirline] = useState('');
   const [selectedDepartureCity, setSelectedDepartureCity] = useState('');
   const [selectedArrivalCity, setSelectedArrivalCity] = useState('');
@@ -37,11 +36,9 @@ export default function Search({ user, setUser }) {
   const [minPrice, setMinPrice] = useState(0);
   const [sortBy, setSortBy] = useState('price_asc');
 
-  // Booking modal
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Popular routes for quick search chips
   const popularRoutes = [
     { from: 'Delhi', to: 'Mumbai', label: 'Delhi ➔ Mumbai' },
     { from: 'Bangalore', to: 'Goa', label: 'Bangalore ➔ Goa' },
@@ -133,7 +130,7 @@ export default function Search({ user, setUser }) {
     setModalOpen(true);
   }
 
-  async function confirmBooking({ passengers, paymentMethod }) {
+  async function confirmBooking({ passengers, paymentMethod, paymentDetails }) {
     if (!user) {
       notify('warning', 'Please sign in to book tickets');
       return;
@@ -145,7 +142,8 @@ export default function Search({ user, setUser }) {
       const res = await bookFlight({
         flightId: selectedFlight.flight_id,
         passengerName,
-        paymentMethod
+        paymentMethod,
+        paymentDetails
       });
 
       setUser(res.user);
@@ -179,46 +177,31 @@ export default function Search({ user, setUser }) {
     <div className="space-y-8 pb-12">
       
       {/* Hero Section */}
-      <section className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-900 text-white p-8 md:p-12 shadow-2xl border border-slate-800">
-        
-        {/* Glow Spheres */}
-        <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-0 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="relative z-10 max-w-4xl mx-auto space-y-6 text-center">
+      <section className="relative rounded-2xl overflow-hidden bg-slate-900 text-white p-8 md:p-12 shadow-xl border border-slate-800">
+        <div className="relative z-10 max-w-4xl mx-auto space-y-5 text-center">
           
-          <motion.div initial={{ opacity: 0, y: -15 }} animate={{ opacity: 1, y: 0 }}>
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/10 backdrop-blur-md text-xs font-semibold tracking-wider uppercase text-sky-300 border border-white/10">
-              ✈ Explore 250+ Global Routes
+          <div>
+            <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-slate-800 text-xs font-bold uppercase tracking-wider text-sky-400 border border-slate-700">
+              ✈ Search 250+ Routes
             </span>
-          </motion.div>
+          </div>
 
-          <motion.h1 
-            initial={{ opacity: 0, y: -10 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ delay: 0.1 }}
-            className="text-3xl md:text-5xl font-black tracking-tight leading-tight bg-gradient-to-r from-white via-sky-100 to-blue-200 bg-clip-text text-transparent"
-          >
-            Fly Anywhere. Pay Less.
-          </motion.h1>
+          <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight text-white leading-tight">
+            Find & Book Your Flight
+          </h1>
 
-          <motion.p 
-            initial={{ opacity: 0 }} 
-            animate={{ opacity: 1 }} 
-            transition={{ delay: 0.2 }}
-            className="text-sm md:text-base text-slate-300 max-w-2xl mx-auto"
-          >
-            Real-time price comparisons, instant ticket downloads, zero hidden fees, and seamless wallet payments.
-          </motion.p>
+          <p className="text-sm md:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">
+            Real-time price comparisons, transparent fares, zero convenience charges, and instant ticket PDF generation.
+          </p>
 
           {/* Quick Route Chips */}
           <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
-            <span className="text-xs text-slate-400 font-semibold mr-1">Trending Routes:</span>
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-wider mr-1">Popular Routes:</span>
             {popularRoutes.map((r, idx) => (
               <button
                 key={idx}
                 onClick={() => handleChipClick(r)}
-                className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-xs font-medium text-white transition-all transform hover:scale-105"
+                className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-blue-700 border border-slate-700 text-xs font-semibold text-white transition-colors"
               >
                 {r.label}
               </button>
@@ -228,32 +211,29 @@ export default function Search({ user, setUser }) {
         </div>
       </section>
 
-      {/* Main Search & Filter Container */}
+      {/* Search & Filter Container */}
       <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
         
         {/* Search Panel (3 Columns) */}
         <div className="lg:col-span-3 space-y-6">
           
           {/* Flight Search Card */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-xl shadow-slate-900/5 space-y-5"
-          >
+          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+            
             {/* Trip Type Pills */}
-            <div className="flex items-center gap-3 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2 border-b border-slate-100 pb-4">
               <button
                 onClick={() => setTripType('oneway')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  tripType === 'oneway' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  tripType === 'oneway' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 One Way
               </button>
               <button
                 onClick={() => setTripType('roundtrip')}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  tripType === 'roundtrip' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  tripType === 'roundtrip' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
                 Round Trip
@@ -265,7 +245,7 @@ export default function Search({ user, setUser }) {
               
               {/* Departure */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   From (Departure)
                 </label>
                 <input
@@ -273,28 +253,26 @@ export default function Search({ user, setUser }) {
                   placeholder="e.g. Delhi"
                   value={departureQuery}
                   onChange={(e) => setDepartureQuery(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-semibold text-slate-800"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent text-xs font-semibold text-slate-900"
                 />
               </div>
 
               {/* Swap Button */}
-              <div className="md:col-span-1 flex justify-center pb-1">
-                <motion.button
-                  whileHover={{ rotate: 180 }}
-                  whileTap={{ scale: 0.9 }}
+              <div className="md:col-span-1 flex justify-center pb-0.5">
+                <button
                   onClick={swapLocations}
-                  className="p-3 rounded-full bg-slate-100 hover:bg-blue-50 text-slate-600 hover:text-blue-600 border border-slate-200 transition-colors"
+                  className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-colors"
                   title="Swap Origin & Destination"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                   </svg>
-                </motion.button>
+                </button>
               </div>
 
               {/* Arrival */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   To (Destination)
                 </label>
                 <input
@@ -302,20 +280,20 @@ export default function Search({ user, setUser }) {
                   placeholder="e.g. Mumbai"
                   value={arrivalQuery}
                   onChange={(e) => setArrivalQuery(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-semibold text-slate-800"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent text-xs font-semibold text-slate-900"
                 />
               </div>
 
               {/* Travel Date */}
               <div className="md:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                   Travel Date
                 </label>
                 <input
                   type="date"
                   value={travelDate}
                   onChange={(e) => setTravelDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-semibold text-slate-800"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-blue-600 focus:border-transparent text-xs font-semibold text-slate-900"
                 />
               </div>
 
@@ -325,30 +303,30 @@ export default function Search({ user, setUser }) {
             <div className="flex items-center justify-between pt-2">
               <button
                 onClick={clearFilters}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors"
+                className="text-xs font-bold text-slate-500 hover:text-slate-900 transition-colors"
               >
                 Reset Filters
               </button>
               <button
                 onClick={() => fetchFlights(departureQuery, arrivalQuery, travelDate)}
-                className="px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-sm shadow-md shadow-blue-500/25 transition-all"
+                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-blue-800 text-white font-bold text-xs shadow-sm transition-all"
               >
-                Search Available Flights
+                Search Flights
               </button>
             </div>
 
-          </motion.div>
+          </div>
 
           {/* Flights List */}
           <div className="space-y-4">
-            <div className="flex items-center justify-between px-2">
-              <h2 className="text-lg font-bold text-slate-800">
-                Available Flights <span className="text-slate-400 font-normal">({flights.length})</span>
+            <div className="flex items-center justify-between px-1">
+              <h2 className="text-base font-extrabold text-slate-900">
+                Available Flights <span className="text-slate-500 font-semibold">({flights.length})</span>
               </h2>
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
-                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
+                className="px-3 py-1.5 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
               >
                 <option value="price_asc">Sort: Price Low ➔ High</option>
                 <option value="price_desc">Sort: Price High ➔ Low</option>
@@ -357,34 +335,32 @@ export default function Search({ user, setUser }) {
             </div>
 
             {loading ? (
-              <div className="p-12 text-center bg-white rounded-3xl shadow-sm border border-slate-100">
-                <div className="inline-block animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600"></div>
-                <p className="mt-3 text-sm text-slate-500 font-medium">Fetching real-time flights...</p>
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200">
+                <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
+                <p className="mt-3 text-xs font-semibold text-slate-600">Loading flights...</p>
               </div>
             ) : flights.length === 0 ? (
-              <div className="p-12 text-center bg-white rounded-3xl shadow-sm border border-slate-100 space-y-3">
-                <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto">
-                  <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
+              <div className="p-12 text-center bg-white rounded-2xl border border-slate-200 space-y-3">
+                <div className="w-12 h-12 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mx-auto font-bold">
+                  ✈
                 </div>
-                <h3 className="text-base font-bold text-slate-800">No flights found</h3>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Try searching for different cities or clear your filter criteria to see available flights.
+                <h3 className="text-sm font-bold text-slate-900">No flights found</h3>
+                <p className="text-xs text-slate-600 max-w-xs mx-auto">
+                  Try searching for different cities or clear your filter parameters.
                 </p>
                 <button
                   onClick={clearFilters}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-semibold"
+                  className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold"
                 >
-                  Clear All Filters
+                  Clear Filters
                 </button>
               </div>
             ) : (
-              <AnimatePresence>
+              <div className="space-y-4">
                 {flights.map((f) => (
                   <FlightCard key={f.flight_id} flight={f} onBook={openBooking} />
                 ))}
-              </AnimatePresence>
+              </div>
             )}
           </div>
 
@@ -392,21 +368,21 @@ export default function Search({ user, setUser }) {
 
         {/* Filters Sidebar (1 Column) */}
         <div className="space-y-6">
-          <div className="bg-white/90 backdrop-blur-xl rounded-3xl p-6 border border-slate-200/80 shadow-xl shadow-slate-900/5 space-y-5 sticky top-24">
-            <h3 className="text-base font-bold text-slate-800 border-b border-slate-100 pb-3 flex items-center justify-between">
+          <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm space-y-4 sticky top-24">
+            <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate-900 border-b border-slate-100 pb-3 flex items-center justify-between">
               <span>Filter Flights</span>
-              <button onClick={clearFilters} className="text-xs text-blue-600 hover:underline">Reset</button>
+              <button onClick={clearFilters} className="text-[11px] text-blue-700 hover:underline">Reset</button>
             </h3>
 
             {/* Filter by Airline */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 Filter by Airline
               </label>
               <select
                 value={selectedAirline}
                 onChange={(e) => setSelectedAirline(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-800 bg-white"
               >
                 {airlines.map((a) => (
                   <option key={a || 'all'} value={a}>
@@ -418,13 +394,13 @@ export default function Search({ user, setUser }) {
 
             {/* Departure City */}
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 Departure City
               </label>
               <select
                 value={selectedDepartureCity}
                 onChange={(e) => setSelectedDepartureCity(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 bg-white"
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-medium text-slate-800 bg-white"
               >
                 {departureCities.map((c) => (
                   <option key={c || 'all'} value={c}>
@@ -436,9 +412,9 @@ export default function Search({ user, setUser }) {
 
             {/* Price Range Slider */}
             <div>
-              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+              <div className="flex justify-between text-xs font-bold uppercase tracking-wider text-slate-700 mb-1">
                 <span>Max Price</span>
-                <span className="text-blue-600 font-extrabold">₹{maxPrice.toLocaleString('en-IN')}</span>
+                <span className="text-blue-800 font-extrabold">₹{maxPrice.toLocaleString('en-IN')}</span>
               </div>
               <input
                 type="range"
@@ -447,7 +423,7 @@ export default function Search({ user, setUser }) {
                 step="500"
                 value={maxPrice}
                 onChange={(e) => setMaxPrice(Number(e.target.value))}
-                className="w-full accent-blue-600 cursor-pointer"
+                className="w-full accent-slate-900 cursor-pointer"
               />
             </div>
           </div>
@@ -464,6 +440,7 @@ export default function Search({ user, setUser }) {
             onClose={() => setModalOpen(false)}
             onConfirm={confirmBooking}
             user={user}
+            setUser={setUser}
           />
         )}
       </AnimatePresence>

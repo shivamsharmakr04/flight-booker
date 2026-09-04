@@ -17,7 +17,6 @@ export default function Navbar({ user, setUser }) {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  // Close mobile menu on route change
   useEffect(() => {
     setIsMenuOpen(false);
     setIsUserMenuOpen(false);
@@ -82,69 +81,54 @@ export default function Navbar({ user, setUser }) {
       <nav
         className={`w-full transition-all duration-300 ${
           isScrolled
-            ? 'bg-white/90 backdrop-blur-lg border-b border-slate-200/80 shadow-md shadow-slate-900/5'
-            : 'bg-white/80 backdrop-blur-md border-b border-slate-100 shadow-sm'
+            ? 'bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-md'
+            : 'bg-white border-b border-slate-200/80 shadow-sm'
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
             {/* Brand Logo Section */}
-            <motion.div
+            <div
               className="flex items-center gap-3 cursor-pointer group"
               onClick={() => handleNavigation('/')}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
             >
-              <div className="relative">
-                <div className="bg-gradient-to-tr from-blue-600 via-indigo-600 to-sky-400 text-white rounded-xl w-10 h-10 flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:rotate-12 transition-transform duration-300">
-                  <svg className="w-5 h-5 transform -rotate-45 group-hover:translate-x-0.5 transition-transform" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-                  </svg>
-                </div>
-                <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-sky-500"></span>
-                </span>
+              <div className="bg-slate-900 text-white rounded-xl w-10 h-10 flex items-center justify-center shadow-md group-hover:bg-blue-800 transition-colors duration-300">
+                <svg className="w-5 h-5 transform -rotate-45" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
               </div>
 
               <div>
-                <div className="font-bold text-xl tracking-tight bg-gradient-to-r from-slate-900 via-blue-900 to-indigo-900 bg-clip-text text-transparent group-hover:from-blue-600 group-hover:to-indigo-600 transition-all">
+                <div className="font-extrabold text-xl tracking-tight text-slate-900 group-hover:text-blue-700 transition-colors">
                   Flight Booker
                 </div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-1">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
                   <span>Fast</span>
                   <span>•</span>
                   <span>Secure</span>
                   <span>•</span>
-                  <span className="text-blue-600 font-bold">SkyPass</span>
+                  <span className="text-blue-700 font-extrabold">Executive</span>
                 </div>
               </div>
-            </motion.div>
+            </div>
 
             {/* Desktop Navigation Links */}
-            <div className="hidden md:flex items-center gap-1 bg-slate-100/70 p-1.5 rounded-full border border-slate-200/50">
+            <div className="hidden md:flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200/80">
               {navItems.map((item) => {
                 const isActive = location.pathname === item.path;
                 return (
                   <button
                     key={item.path}
                     onClick={() => handleNavigation(item.path)}
-                    className={`relative px-4 py-1.5 text-sm font-medium rounded-full transition-all duration-200 flex items-center gap-2 ${
+                    className={`relative px-4 py-1.5 text-xs font-semibold rounded-lg transition-all duration-200 flex items-center gap-2 ${
                       isActive
-                        ? 'text-blue-700 font-semibold'
-                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-700 hover:text-slate-900 hover:bg-slate-200/60'
                     }`}
                   >
-                    {isActive && (
-                      <motion.div
-                        layoutId="activeTab"
-                        className="absolute inset-0 bg-white rounded-full shadow-sm border border-slate-200/60"
-                        transition={{ type: 'spring', stiffness: 400, damping: 30 }}
-                      />
-                    )}
                     <span className="relative z-10 flex items-center gap-1.5">
-                      <span className={isActive ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}>
+                      <span className={isActive ? 'text-sky-400' : 'text-slate-400'}>
                         {item.icon}
                       </span>
                       {item.name}
@@ -160,77 +144,71 @@ export default function Navbar({ user, setUser }) {
                 <div className="flex items-center gap-3">
                   
                   {/* Interactive Wallet Pill */}
-                  <motion.div
-                    whileHover={{ scale: 1.04 }}
-                    whileTap={{ scale: 0.96 }}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200/80 rounded-full shadow-sm text-xs font-medium cursor-pointer group"
+                  <div
+                    className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-medium cursor-pointer"
                     title="Available Wallet Balance"
                   >
-                    <div className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-sm group-hover:bg-emerald-600 transition-colors">
-                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                      </svg>
+                    <div className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs shadow-sm font-bold">
+                      ₹
                     </div>
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-emerald-700 font-bold uppercase tracking-wider leading-none">Wallet</span>
-                      <span className="text-emerald-900 font-bold text-sm leading-none mt-0.5">
+                      <span className="text-[9px] text-emerald-800 font-extrabold uppercase tracking-wider leading-none">Wallet</span>
+                      <span className="text-emerald-950 font-extrabold text-xs leading-none mt-0.5">
                         ₹{Number(user.wallet_balance || 0).toLocaleString('en-IN')}
                       </span>
                     </div>
-                  </motion.div>
+                  </div>
 
-                  {/* User Profile Pill & Logout Dropdown Toggle */}
+                  {/* User Profile Dropdown Toggle */}
                   <div className="relative">
-                    <motion.button
-                      whileHover={{ scale: 1.02 }}
-                      whileTap={{ scale: 0.98 }}
+                    <button
                       onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                      className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 bg-slate-100/80 hover:bg-slate-200/70 border border-slate-200/80 rounded-full transition-all text-xs font-medium text-slate-700"
+                      className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 rounded-xl transition-all text-xs font-semibold text-slate-800"
                     >
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+                      <div className="w-7 h-7 rounded-lg bg-slate-900 text-white font-bold flex items-center justify-center text-xs shadow-sm">
                         {user.name ? user.name[0].toUpperCase() : 'U'}
                       </div>
-                      <span className="font-semibold text-slate-800 max-w-[100px] truncate">
+                      <span className="font-bold text-slate-900 max-w-[100px] truncate">
                         {user.name}
                       </span>
                       <svg className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-200 ${isUserMenuOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
-                    </motion.button>
+                    </button>
 
                     {/* User Dropdown Menu */}
                     <AnimatePresence>
                       {isUserMenuOpen && (
                         <motion.div
-                          initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                          initial={{ opacity: 0, y: 6, scale: 0.98 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
-                          exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                          exit={{ opacity: 0, y: 6, scale: 0.98 }}
                           transition={{ duration: 0.15 }}
-                          className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
+                          className="absolute right-0 mt-2 w-52 bg-white rounded-xl shadow-xl border border-slate-200 py-2 z-50"
                         >
                           <div className="px-4 py-2 border-b border-slate-100">
-                            <p className="text-xs text-slate-400 font-medium">Logged in as</p>
-                            <p className="text-sm font-semibold text-slate-800 truncate">{user.name}</p>
-                            <p className="text-xs text-slate-500 truncate">{user.email || 'Passenger'}</p>
+                            <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">Signed in as</p>
+                            <p className="text-xs font-bold text-slate-900 truncate">{user.name}</p>
+                            <p className="text-[11px] text-slate-500 truncate">{user.email || 'Passenger'}</p>
                           </div>
                           
                           <button
                             onClick={() => handleNavigation('/bookings')}
-                            className="w-full px-4 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
+                            className="w-full px-4 py-2 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 flex items-center gap-2 transition-colors"
                           >
-                            <svg className="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-blue-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2V7a2 2 0 00-2-2H5z" />
                             </svg>
-                            My Flight Bookings
+                            My Boarding Passes
                           </button>
 
                           <div className="my-1 border-t border-slate-100"></div>
 
                           <button
                             onClick={handleLogout}
-                            className="w-full px-4 py-2 text-left text-xs font-semibold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
+                            className="w-full px-4 py-2 text-left text-xs font-bold text-rose-700 hover:bg-rose-50 flex items-center gap-2 transition-colors"
                           >
-                            <svg className="w-4 h-4 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 text-rose-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                             </svg>
                             Sign Out
@@ -244,21 +222,19 @@ export default function Navbar({ user, setUser }) {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => handleNavigation('/signin')}
-                    className="px-4 py-2 text-xs font-semibold text-slate-700 hover:text-blue-600 hover:bg-slate-100/70 rounded-full transition-all"
+                    className="px-4 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition-all"
                   >
                     Sign In
                   </button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
+                  <button
                     onClick={() => handleNavigation('/register')}
-                    className="px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 transition-all flex items-center gap-1.5"
+                    className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-blue-800 rounded-xl shadow-sm transition-all flex items-center gap-1.5"
                   >
                     <span>Register</span>
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                     </svg>
-                  </motion.button>
+                  </button>
                 </div>
               )}
             </div>
@@ -266,15 +242,14 @@ export default function Navbar({ user, setUser }) {
             {/* Mobile Menu Hamburger Button */}
             <div className="md:hidden flex items-center gap-2">
               {user && (
-                <div className="flex items-center gap-1 px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-full text-xs font-bold text-emerald-800">
-                  <span>₹{Number(user.wallet_balance || 0).toLocaleString('en-IN')}</span>
+                <div className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-extrabold text-emerald-800">
+                  ₹{Number(user.wallet_balance || 0).toLocaleString('en-IN')}
                 </div>
               )}
 
-              <motion.button
-                whileTap={{ scale: 0.9 }}
+              <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 rounded-xl text-slate-600 hover:text-blue-600 hover:bg-blue-50/80 transition-colors focus:outline-none"
+                className="p-2 rounded-xl text-slate-700 hover:bg-slate-100 transition-colors"
                 aria-label="Toggle menu"
               >
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -284,7 +259,7 @@ export default function Navbar({ user, setUser }) {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
                   )}
                 </svg>
-              </motion.button>
+              </button>
             </div>
 
           </div>
@@ -297,11 +272,10 @@ export default function Navbar({ user, setUser }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: 'auto' }}
               exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease: 'easeInOut' }}
-              className="md:hidden border-t border-slate-100 bg-white/95 backdrop-blur-xl overflow-hidden shadow-xl"
+              transition={{ duration: 0.2 }}
+              className="md:hidden border-t border-slate-200 bg-white overflow-hidden shadow-xl"
             >
-              <div className="px-4 py-5 space-y-3">
-                {/* Mobile Links */}
+              <div className="px-4 py-4 space-y-3">
                 <div className="space-y-1">
                   {navItems.map((item) => {
                     const isActive = location.pathname === item.path;
@@ -309,44 +283,40 @@ export default function Navbar({ user, setUser }) {
                       <button
                         key={item.path}
                         onClick={() => handleNavigation(item.path)}
-                        className={`w-full px-4 py-3 rounded-xl text-sm font-medium flex items-center justify-between transition-all ${
+                        className={`w-full px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center justify-between transition-all ${
                           isActive
-                            ? 'bg-blue-50 text-blue-600 font-semibold shadow-sm border border-blue-100'
-                            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+                            ? 'bg-slate-900 text-white font-bold shadow-sm'
+                            : 'text-slate-700 hover:bg-slate-100'
                         }`}
                       >
                         <div className="flex items-center gap-3">
-                          <span className={isActive ? 'text-blue-600' : 'text-slate-400'}>
+                          <span className={isActive ? 'text-sky-400' : 'text-slate-400'}>
                             {item.icon}
                           </span>
                           {item.name}
                         </div>
-                        {isActive && (
-                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                        )}
                       </button>
                     );
                   })}
                 </div>
 
-                {/* Mobile User Profile / Auth Section */}
                 <div className="pt-3 border-t border-slate-100">
                   {user ? (
-                    <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200/60 space-y-3">
+                    <div className="bg-slate-50 rounded-xl p-3 border border-slate-200 space-y-3">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-sm">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white font-bold flex items-center justify-center text-xs">
                             {user.name ? user.name[0].toUpperCase() : 'U'}
                           </div>
                           <div>
-                            <div className="text-sm font-bold text-slate-800">{user.name}</div>
-                            <div className="text-xs text-slate-500">Passenger</div>
+                            <div className="text-xs font-bold text-slate-900">{user.name}</div>
+                            <div className="text-[10px] text-slate-500">Passenger</div>
                           </div>
                         </div>
 
                         <div className="text-right">
-                          <div className="text-[10px] text-slate-400 font-bold uppercase">Balance</div>
-                          <div className="text-sm font-extrabold text-emerald-600">
+                          <div className="text-[9px] text-slate-400 font-bold uppercase">Balance</div>
+                          <div className="text-xs font-extrabold text-emerald-700">
                             ₹{Number(user.wallet_balance || 0).toLocaleString('en-IN')}
                           </div>
                         </div>
@@ -354,25 +324,22 @@ export default function Navbar({ user, setUser }) {
 
                       <button
                         onClick={handleLogout}
-                        className="w-full py-2.5 px-4 bg-rose-50 text-rose-600 border border-rose-200/70 hover:bg-rose-100 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+                        className="w-full py-2 px-3 bg-rose-50 text-rose-700 border border-rose-200 rounded-lg text-xs font-bold transition-colors"
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
-                        Logout Account
+                        Sign Out
                       </button>
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2 pt-1">
                       <button
                         onClick={() => handleNavigation('/signin')}
-                        className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold text-center transition-colors"
+                        className="w-full py-2 px-3 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold text-center"
                       >
                         Sign In
                       </button>
                       <button
                         onClick={() => handleNavigation('/register')}
-                        className="w-full py-2.5 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl text-xs font-semibold text-center shadow-md shadow-blue-500/20 transition-all"
+                        className="w-full py-2 px-3 bg-slate-900 text-white rounded-xl text-xs font-semibold text-center shadow-sm"
                       >
                         Register
                       </button>

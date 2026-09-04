@@ -10,6 +10,7 @@ import Signin from './pages/Signin';
 import About from './pages/About';
 import Contact from './pages/Contact';
 import { NotificationProvider } from './components/NotificationSystem';
+
 export default function App() {
   const [user, setUser] = useState(() => {
     const saved = localStorage.getItem('user');
@@ -18,33 +19,33 @@ export default function App() {
 
   return (
     <NotificationProvider>
-    <BrowserRouter>
-      <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 via-white to-slate-50">
-        <Navbar user={user} setUser={setUser} />
+      <BrowserRouter>
+        <div className="min-h-screen flex flex-col bg-slate-50 text-slate-800 font-sans antialiased">
+          <Navbar user={user} setUser={setUser} />
 
-        <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <Routes>
-            <Route
-              path="/"
-              element={<Search user={user} setUser={setUser} />}
-            />
+          <main className="flex-1 container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <Routes>
+              <Route
+                path="/"
+                element={<Search user={user} setUser={setUser} />}
+              />
 
-            <Route
-              path="/bookings"
-              element={<BookingHistory/>}
-            />
+              <Route
+                path="/bookings"
+                element={<BookingHistory />}
+              />
 
-            <Route path="/about" element={<About />} />
-            <Route path="/contact" element={<Contact />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/contact" element={<Contact />} />
 
-            <Route path="/register" element={<Register />} />
-            <Route path="/signin" element={<Signin setUser={setUser} />} />
-          </Routes>
-        </main>
+              <Route path="/register" element={<Register />} />
+              <Route path="/signin" element={<Signin setUser={setUser} />} />
+            </Routes>
+          </main>
 
-        <Footer />
-      </div>
-    </BrowserRouter>
+          <Footer />
+        </div>
+      </BrowserRouter>
     </NotificationProvider>
   );
 }

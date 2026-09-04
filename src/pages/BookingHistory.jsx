@@ -65,150 +65,113 @@ export default function BookingHistory() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[50vh] space-y-4">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-        <p className="text-sm font-semibold text-slate-600">Retrieving your boarding passes...</p>
+      <div className="flex flex-col items-center justify-center min-h-[40vh] space-y-3">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-slate-900"></div>
+        <p className="text-xs font-semibold text-slate-600">Retrieving boarding passes...</p>
       </div>
     );
   }
 
   if (!token || bookings.length === 0) {
     return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="max-w-md mx-auto my-16 p-8 bg-white/90 backdrop-blur-xl rounded-3xl border border-slate-200/80 shadow-xl text-center space-y-4"
-      >
-        <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
-          <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 002 2h14a2 2 0 002-2V7a2 2 0 00-2-2H5z" />
-          </svg>
+      <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-2xl border border-slate-200 shadow-sm text-center space-y-4">
+        <div className="w-12 h-12 bg-slate-100 text-slate-700 rounded-full flex items-center justify-center mx-auto font-bold text-lg">
+          ✈
         </div>
-        <h2 className="text-xl font-bold text-slate-800">
+        <h2 className="text-lg font-bold text-slate-900">
           {!token ? 'Sign In Required' : 'No Bookings Found'}
         </h2>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-slate-600">
           {!token
-            ? 'Please sign in to view your flight reservations and digital boarding passes.'
-            : 'You haven’t booked any flight tickets yet. Explore flights to get started!'}
+            ? 'Please sign in to view your booking history and digital boarding passes.'
+            : 'You haven’t booked any flight tickets yet.'}
         </p>
         <button
           onClick={() => navigate(!token ? '/signin' : '/')}
-          className="px-6 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md transition-all"
+          className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-blue-800 text-white font-bold text-xs"
         >
           {!token ? 'Sign In Now' : 'Search Flights'}
         </button>
-      </motion.div>
+      </div>
     );
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 pb-12">
+    <div className="max-w-5xl mx-auto space-y-6 pb-12">
       
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-black text-slate-800 tracking-tight">My Boarding Passes</h1>
-          <p className="text-xs font-medium text-slate-500 mt-1">Manage and download your flight e-tickets</p>
+          <h1 className="text-2xl font-black text-slate-900 tracking-tight">My Boarding Passes</h1>
+          <p className="text-xs font-medium text-slate-500 mt-0.5">Manage and download your flight e-tickets</p>
         </div>
 
-        {/* Filter Bar */}
         <div className="flex flex-col sm:flex-row gap-3">
           <input
             type="text"
-            placeholder="Search by Passenger or PNR..."
+            placeholder="Search Passenger or PNR..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-semibold focus:ring-2 focus:ring-blue-500 bg-white"
+            className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-900 bg-white"
           />
           <select
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
-            className="px-4 py-2 rounded-2xl border border-slate-200 text-xs font-semibold text-slate-700 bg-white"
+            className="px-3.5 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-800 bg-white"
           >
-            <option value="date-desc">Newest Bookings</option>
-            <option value="date-asc">Oldest Bookings</option>
+            <option value="date-desc">Newest First</option>
+            <option value="date-asc">Oldest First</option>
             <option value="amount-desc">Amount: High ➔ Low</option>
           </select>
         </div>
       </div>
 
-      {/* Boarding Pass Ticket Grid */}
-      <div className="space-y-6">
+      {/* Boarding Passes */}
+      <div className="space-y-4">
         <AnimatePresence>
           {filteredBookings.map((b, idx) => (
             <motion.div
               key={b._id || idx}
-              initial={{ opacity: 0, y: 15 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              className="bg-white rounded-3xl border border-slate-200/80 shadow-lg shadow-slate-900/5 overflow-hidden hover:shadow-xl transition-all group relative"
+              className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden"
             >
-              {/* Boarding Pass Header Banner */}
-              <div className="bg-gradient-to-r from-slate-900 via-indigo-900 to-blue-900 p-4 text-white flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-sky-400 font-bold text-sm">
-                    ✈
-                  </div>
-                  <div>
-                    <div className="text-xs font-bold uppercase tracking-wider text-sky-300">Boarding Pass</div>
-                    <div className="text-xs text-slate-300">Confirmed Flight Ticket</div>
-                  </div>
+              {/* Header Banner */}
+              <div className="bg-slate-900 p-3.5 text-white flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs uppercase tracking-wider text-sky-400">Boarding Pass</span>
+                  <span className="text-slate-400 text-xs">• Confirmed Ticket</span>
                 </div>
-
-                <span className="px-3 py-1 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-full font-mono text-xs font-bold">
+                <span className="px-2.5 py-0.5 bg-slate-800 rounded font-mono text-xs font-bold text-slate-200">
                   PNR: {b.pnr}
                 </span>
               </div>
 
-              {/* Ticket Body */}
-              <div className="p-6 grid grid-cols-1 lg:grid-cols-4 gap-6 items-center">
-                
-                {/* Passenger & Date */}
-                <div className="lg:col-span-2 space-y-2">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Passenger</div>
-                  <div className="text-lg font-extrabold text-slate-800">{b.passenger_name}</div>
-                  
-                  <div className="flex items-center gap-4 text-xs text-slate-500 pt-1">
-                    <span>Booked On: {new Date(b.booking_time).toLocaleDateString()}</span>
-                    <span>•</span>
-                    <span>Status: <strong className="text-emerald-600">Active</strong></span>
-                  </div>
+              {/* Body */}
+              <div className="p-5 grid grid-cols-1 lg:grid-cols-4 gap-4 items-center">
+                <div className="lg:col-span-2 space-y-1">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Passenger</div>
+                  <div className="text-base font-extrabold text-slate-900">{b.passenger_name}</div>
+                  <div className="text-xs text-slate-500">Booked On: {new Date(b.booking_time).toLocaleDateString()}</div>
                 </div>
 
-                {/* Amount Paid */}
-                <div className="text-left lg:text-center space-y-1">
-                  <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Paid</div>
-                  <div className="text-2xl font-extrabold text-blue-700">₹{Number(b.amount_paid).toLocaleString('en-IN')}</div>
-                  <div className="text-[11px] text-slate-400">Tax & Fees Included</div>
+                <div className="text-left lg:text-center">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount Paid</div>
+                  <div className="text-xl font-black text-slate-900">₹{Number(b.amount_paid).toLocaleString('en-IN')}</div>
                 </div>
 
-                {/* Download Ticket Action & Simulated Barcode */}
-                <div className="flex flex-col items-start lg:items-end justify-center gap-3 border-t lg:border-t-0 lg:border-l border-slate-100 pt-4 lg:pt-0 lg:pl-6">
-                  
-                  {/* Barcode Graphic */}
-                  <div className="h-6 w-32 bg-slate-200/70 rounded flex items-center justify-between px-1 opacity-60">
-                    {Array.from({ length: 16 }).map((_, i) => (
-                      <div key={i} className={`h-full bg-slate-800 ${i % 3 === 0 ? 'w-1' : 'w-0.5'}`}></div>
-                    ))}
-                  </div>
-
+                <div className="flex justify-start lg:justify-end">
                   <a
                     href={`http://localhost:4000/tickets/${b.pnr}.pdf`}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() => notify('success', 'Downloading PDF ticket...')}
-                    className="px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1.5"
+                    className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-blue-800 text-white font-bold text-xs shadow-sm"
                   >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    <span>Download E-Ticket</span>
+                    Download E-Ticket
                   </a>
                 </div>
-
               </div>
-
             </motion.div>
           ))}
         </AnimatePresence>
