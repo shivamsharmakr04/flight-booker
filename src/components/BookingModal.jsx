@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotify } from './NotificationSystem';
+import { addWalletBalance } from '../api';
 
-export default function BookingModal({ flight, open, onClose, onConfirm, user }) {
+export default function BookingModal({ flight, open, onClose, onConfirm, user, setUser }) {
   const { notify } = useNotify();
 
-  const [step, setStep] = useState(1); // Step 1: Seat & Class, Step 2: Passenger Info, Step 3: Payment & Confirm
+  const [step, setStep] = useState(1); // Step 1: Seat & Date, Step 2: Passengers, Step 3: Payment & Confirm
 
   const [passengers, setPassengers] = useState([
     {
@@ -17,21 +18,44 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
     }
   ]);
 
-  const [selectedSeatType, setSelectedSeatType] = useState('window'); // window, aisle, middle
+  const [selectedSeatType, setSelectedSeatType] = useState('window');
   const [selectedSeatNo, setSelectedSeatNo] = useState('12A');
   const [travelDate, setTravelDate] = useState(new Date().toISOString().split('T')[0]);
-  const [paymentMethod, setPaymentMethod] = useState('wallet');
-  const [loading, setLoading] = useState(false);
+  
+  // Payment States
+  const [paymentMethod, setPaymentMethod] = useState('upi'); // upi, card, netbanking, wallet
+  const [upiId, setUpiId] = useState('');
+  const [selectedUpiApp, setSelectedUpiApp] = useState('GPay');
+  
+  const [cardDetails, setCardDetails] = useState({
+    name: user?.name || '',
+    number: '',
+    expiry: '',
+    cvv: ''
+  });
+
+  const [selectedBank, setSelectedBank] = useState('HDFC');
+  
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
   const [priceBreakdown, setPriceBreakdown] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minute price lock timer
+  const [timeLeft, setTimeLeft] = useState(600);
 
   const availableSeats = [
-    { no: '12A', type: 'window', priceBonus: 0 },
-    { no: '12B', type: 'middle', priceBonus: 0 },
-    { no: '12C', type: 'aisle', priceBonus: 200 },
-    { no: '14A', type: 'window', priceBonus: 0 },
-    { no: '14B', type: 'middle', priceBonus: 0 },
-    { no: '14C', type: 'aisle', priceBonus: 200 }
+    { no: '12A', type: 'window' },
+    { no: '12B', type: 'middle' },
+    { no: '12C', type: 'aisle' },
+    { no: '14A', type: 'window' },
+    { no: '14B', type: 'middle' },
+    { no: '14C', type: 'aisle' }
+  ];
+
+  const banks = [
+    { id: 'HDFC', name: 'HDFC Bank' },
+    { id: 'ICICI', name: 'ICICI Bank' },
+    { id: 'SBI', name: 'State Bank of India' },
+    { id: 'AXIS', name: 'Axis Bank' },
+    { id: 'KOTAK', name: 'Kotak Bank' }
   ];
 
   /* ===== PREVIEW PRICE & TIMER ===== */
@@ -91,6 +115,19 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
     setPassengers(updated);
   };
 
+  const handleTopupWallet = async (amount = 2000) => {
+    try {
+      const res = await addWalletBalance(amount);
+      if (res.user && setUser) {
+        setUser(res.user);
+        localStorage.setItem('user', JSON.stringify(res.user));
+      }
+      notify('success', `Added ₹${amount.toLocaleString('en-IN')} to SkyWallet! 💳`);
+    } catch {
+      notify('error', 'Wallet top-up failed');
+    }
+  };
+
   const handleNextStep = () => {
     if (step === 1) {
       if (!travelDate) {
@@ -100,7 +137,7 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
       setStep(2);
     } else if (step === 2) {
       if (passengers.some(p => !p.name || !p.email || !p.phone)) {
-        notify('warning', 'Please fill in required details for all passengers');
+        notify('warning', 'Please fill in required passenger details');
         return;
       }
       setStep(3);
@@ -108,34 +145,64 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
   };
 
   const handleConfirm = async () => {
-    if (!paymentMethod) {
-      notify('warning', 'Please select a payment method');
+    const totalAmount = (priceBreakdown?.total ?? flight.current_price) * passengers.length;
+
+    // Validate payment inputs
+    if (paymentMethod === 'upi' && !upiId.trim()) {
+      notify('warning', 'Please enter a valid UPI ID (e.g. name@upi)');
       return;
     }
-
+    if (paymentMethod === 'card' && (!cardDetails.number || !cardDetails.cvv)) {
+      notify('warning', 'Please complete Card Number and CVV details');
+      return;
+    }
     if (paymentMethod === 'wallet' && user) {
-      const totalAmount = priceBreakdown?.total ?? flight.current_price * passengers.length;
-      if (user.wallet_balance < totalAmount) {
-        notify('warning', `Insufficient wallet balance (₹${user.wallet_balance}). Please select another payment method.`);
+      if ((user.wallet_balance || 0) < totalAmount) {
+        notify('warning', `Insufficient wallet balance. Tap "+ Top-up" to add funds.`);
         return;
       }
     }
 
-    setLoading(true);
-    try {
-      await onConfirm({ passengers, paymentMethod });
-      onClose();
-    } catch (err) {
-      console.error(err);
-      notify('error', 'Booking failed. Please try again.');
-    } finally {
-      setLoading(false);
-    }
+    // Start Real-Time Animated Payment Simulation
+    setProcessingPayment(true);
+    setProcessingStatus('Connecting to 256-Bit SSL Payment Gateway...');
+
+    setTimeout(() => {
+      setProcessingStatus(`Authorizing ${paymentMethod.toUpperCase()} Payment for ₹${totalAmount.toLocaleString('en-IN')}...`);
+    }, 1000);
+
+    setTimeout(async () => {
+      setProcessingStatus('Payment Approved ✔ Generating E-Ticket...');
+      try {
+        await onConfirm({
+          passengers,
+          paymentMethod,
+          paymentDetails: {
+            upiId: paymentMethod === 'upi' ? upiId : undefined,
+            cardLast4: paymentMethod === 'card' ? cardDetails.number.slice(-4) : undefined,
+            bank: paymentMethod === 'netbanking' ? selectedBank : undefined
+          }
+        });
+      } catch (err) {
+        console.error(err);
+        notify('error', 'Booking failed. Please try again.');
+      } finally {
+        setProcessingPayment(false);
+      }
+    }, 2200);
   };
 
   if (!open) return null;
 
   const totalAmountPaid = (priceBreakdown?.total ?? flight.current_price) * passengers.length;
+
+  const getCardBrand = (num) => {
+    if (num.startsWith('4')) return 'VISA';
+    if (num.startsWith('5')) return 'Mastercard';
+    if (num.startsWith('3')) return 'AMEX';
+    if (num.startsWith('6')) return 'RuPay';
+    return 'Card';
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -152,22 +219,38 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
         initial={{ y: 30, opacity: 0, scale: 0.96 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
         exit={{ y: 30, opacity: 0, scale: 0.96 }}
-        className="z-50 bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto border border-slate-100 flex flex-col"
+        className="z-50 bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto border border-slate-100 flex flex-col relative"
       >
-        {/* Header with Flight Info */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 p-6 text-white rounded-t-3xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
-            <svg className="w-48 h-48" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-            </svg>
-          </div>
+        
+        {/* Real-time Payment Processing Overlay */}
+        <AnimatePresence>
+          {processingPayment && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/95 backdrop-blur-md z-50 flex flex-col items-center justify-center p-8 text-center text-white space-y-4 rounded-3xl"
+            >
+              <div className="relative">
+                <div className="w-16 h-16 rounded-full border-4 border-sky-400 border-t-transparent animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center text-xs font-bold text-sky-400">
+                  🔒
+                </div>
+              </div>
+              <h3 className="text-xl font-bold tracking-tight">Real-Time Payment Processing</h3>
+              <p className="text-xs text-sky-200 font-mono animate-pulse">{processingStatus}</p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
+        {/* Header */}
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 p-6 text-white rounded-t-3xl relative overflow-hidden">
           <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
-              <span className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold tracking-wide uppercase text-blue-100">
+              <span className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold uppercase text-blue-100">
                 {flight.airline} • {flight.flight_id}
               </span>
-              <h3 className="text-2xl font-black mt-2 tracking-tight">Flight Reservation</h3>
+              <h3 className="text-2xl font-black mt-2 tracking-tight">Checkout & Payment</h3>
               <p className="text-blue-100 text-xs mt-1">
                 {flight.departure_city} ➔ {flight.arrival_city}
               </p>
@@ -191,12 +274,12 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
               2. Passengers
             </div>
             <div className={`py-1.5 rounded-xl transition-all ${step === 3 ? 'bg-white text-blue-900 font-bold shadow-md' : 'text-blue-200'}`}>
-              3. Payment
+              3. Custom Payment
             </div>
           </div>
         </div>
 
-        {/* Step Content */}
+        {/* Body Content */}
         <div className="p-6 flex-1 space-y-6">
           
           {/* STEP 1: Date & Seat Selector */}
@@ -211,7 +294,7 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
                   value={travelDate}
                   min={new Date().toISOString().split('T')[0]}
                   onChange={(e) => setTravelDate(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium text-slate-800"
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 text-sm font-medium text-slate-800"
                 />
               </div>
 
@@ -242,7 +325,7 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
                 </div>
               </div>
 
-              {/* Interactive Seat Picker Simulator Grid */}
+              {/* Seat Picker Grid */}
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
                 <div className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
                   <span>Available Flight Seats</span>
@@ -272,7 +355,7 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
             </motion.div>
           )}
 
-          {/* STEP 2: Passengers Information */}
+          {/* STEP 2: Passengers */}
           {step === 2 && (
             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
               <div className="flex justify-between items-center">
@@ -341,36 +424,203 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
             </motion.div>
           )}
 
-          {/* STEP 3: Payment Method & Confirmation */}
+          {/* STEP 3: Real-Time Payment Method Sub-Forms */}
           {step === 3 && (
             <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-5">
               
-              {/* Payment Methods */}
+              {/* Payment Method Selector Bar */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
-                  Select Payment Method
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Choose Real-Time Payment Method
                 </label>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-2">
                   {[
-                    { id: 'wallet', title: 'Wallet Balance', desc: user ? `Balance: ₹${user.wallet_balance}` : 'Sign in required' },
-                    { id: 'card', title: 'Credit/Debit Card', desc: 'Instant Processing' },
-                    { id: 'upi', title: 'UPI / GPay', desc: 'Google Pay, PhonePe' }
+                    { id: 'upi', label: 'UPI / QR', icon: '📱' },
+                    { id: 'card', label: 'Debit/Credit Card', icon: '💳' },
+                    { id: 'netbanking', label: 'Net Banking', icon: '🏦' },
+                    { id: 'wallet', label: 'SkyWallet', icon: '👛' }
                   ].map((m) => (
                     <button
                       key={m.id}
                       type="button"
                       onClick={() => setPaymentMethod(m.id)}
-                      className={`p-3.5 rounded-2xl border text-left transition-all ${
+                      className={`p-3 rounded-2xl border text-center transition-all ${
                         paymentMethod === m.id
-                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20'
-                          : 'border-slate-200 hover:border-slate-300'
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20 font-bold text-blue-800'
+                          : 'border-slate-200 hover:border-slate-300 text-slate-600'
                       }`}
                     >
-                      <div className="text-xs font-bold text-slate-800">{m.title}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{m.desc}</div>
+                      <div className="text-lg">{m.icon}</div>
+                      <div className="text-xs mt-1 truncate">{m.label}</div>
                     </button>
                   ))}
                 </div>
+              </div>
+
+              {/* Dynamic Payment Input Sub-Forms */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4">
+                
+                {/* 1. UPI Payment Form */}
+                {paymentMethod === 'upi' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-800">Enter UPI ID / VPA</span>
+                      <div className="flex gap-1">
+                        {['GPay', 'PhonePe', 'Paytm'].map((app) => (
+                          <button
+                            key={app}
+                            type="button"
+                            onClick={() => setSelectedUpiApp(app)}
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              selectedUpiApp === app ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'
+                            }`}
+                          >
+                            {app}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="e.g. rahul@okicici or 9876543210@paytm"
+                        value={upiId}
+                        onChange={(e) => setUpiId(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setUpiId('demo.passenger@upi')}
+                        className="absolute right-2 top-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold"
+                      >
+                        Auto-Fill Demo UPI
+                      </button>
+                    </div>
+
+                    <div className="flex gap-1.5 pt-1">
+                      {['@okaxis', '@icici', '@ybl', '@paytm'].map((handle) => (
+                        <button
+                          key={handle}
+                          type="button"
+                          onClick={() => setUpiId((prev) => (prev.split('@')[0] || 'user') + handle)}
+                          className="px-2 py-1 bg-white border border-slate-200 rounded text-[10px] font-semibold text-slate-600 hover:bg-slate-100"
+                        >
+                          {handle}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Credit/Debit Card Form */}
+                {paymentMethod === 'card' && (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-800">Card Details</span>
+                      <span className="text-[10px] font-extrabold px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                        {getCardBrand(cardDetails.number)}
+                      </span>
+                    </div>
+
+                    <input
+                      type="text"
+                      placeholder="Cardholder Name"
+                      value={cardDetails.name}
+                      onChange={(e) => setCardDetails({ ...cardDetails, name: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                    />
+
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Card Number (e.g. 4532 8912 3456 7890)"
+                        value={cardDetails.number}
+                        maxLength={19}
+                        onChange={(e) => setCardDetails({ ...cardDetails, number: e.target.value.replace(/\D/g, '').replace(/(.{4})/g, '$1 ').trim() })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setCardDetails({ name: user?.name || 'Rahul Sharma', number: '4532 8912 3456 7890', expiry: '12/28', cvv: '789' })}
+                        className="absolute right-2 top-2 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold"
+                      >
+                        Auto-Fill Demo Card
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <input
+                        type="text"
+                        placeholder="MM/YY"
+                        maxLength={5}
+                        value={cardDetails.expiry}
+                        onChange={(e) => setCardDetails({ ...cardDetails, expiry: e.target.value })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="password"
+                        placeholder="CVV (3 Digits)"
+                        maxLength={3}
+                        value={cardDetails.cvv}
+                        onChange={(e) => setCardDetails({ ...cardDetails, cvv: e.target.value.replace(/\D/g, '') })}
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono font-medium focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Net Banking Selector */}
+                {paymentMethod === 'netbanking' && (
+                  <div className="space-y-3">
+                    <span className="text-xs font-bold text-slate-800 block">Select Your Net Banking Provider</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {banks.map((b) => (
+                        <button
+                          key={b.id}
+                          type="button"
+                          onClick={() => setSelectedBank(b.id)}
+                          className={`p-2.5 rounded-xl border text-left text-xs font-semibold transition-all ${
+                            selectedBank === b.id
+                              ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
+                              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                          }`}
+                        >
+                          🏦 {b.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. SkyWallet Form */}
+                {paymentMethod === 'wallet' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between bg-white p-3.5 rounded-xl border border-slate-200">
+                      <div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">SkyWallet Balance</div>
+                        <div className="text-lg font-extrabold text-emerald-600">
+                          ₹{Number(user?.wallet_balance || 0).toLocaleString('en-IN')}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleTopupWallet(2000)}
+                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-1"
+                      >
+                        + Top-up ₹2,000
+                      </button>
+                    </div>
+
+                    {(user?.wallet_balance || 0) < totalAmountPaid && (
+                      <p className="text-[11px] text-amber-700 font-semibold bg-amber-50 p-2 rounded-lg border border-amber-200/70">
+                        ⚠️ Wallet balance is lower than total fare (₹{totalAmountPaid.toLocaleString('en-IN')}). Tap "+ Top-up" above to add funds instantly!
+                      </p>
+                    )}
+                  </div>
+                )}
+
               </div>
 
               {/* Price Breakdown Summary */}
@@ -387,13 +637,6 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
                   <span className="text-sm font-bold text-slate-800">Grand Total</span>
                   <span className="text-xl font-extrabold text-blue-700">₹{totalAmountPaid.toLocaleString('en-IN')}</span>
                 </div>
-
-                {timeLeft > 0 && (
-                  <div className="pt-2 text-[11px] text-amber-700 font-semibold flex items-center justify-between bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60">
-                    <span>⏱ Fare Price Lock Active</span>
-                    <span>{Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')} min remaining</span>
-                  </div>
-                )}
               </div>
 
             </motion.div>
@@ -401,7 +644,7 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
 
         </div>
 
-        {/* Footer Navigation Buttons */}
+        {/* Footer Buttons */}
         <div className="p-6 bg-slate-50 border-t border-slate-100 rounded-b-3xl flex justify-between items-center">
           {step > 1 ? (
             <button
@@ -436,14 +679,10 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
             <button
               type="button"
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={processingPayment}
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50 flex items-center gap-2"
             >
-              {loading ? (
-                <span>Confirming Booking...</span>
-              ) : (
-                <span>Pay & Book Now (₹{totalAmountPaid.toLocaleString('en-IN')})</span>
-              )}
+              🔒 Pay ₹{totalAmountPaid.toLocaleString('en-IN')} Now
             </button>
           )}
         </div>

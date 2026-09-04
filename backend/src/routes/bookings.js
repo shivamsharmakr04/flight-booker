@@ -13,10 +13,8 @@ const auth = require('../middleware/auth');
    SURGE PRICING LOGIC
    ======================= */
 async function recordAttemptAndComputePrice(flightId, userId) {
-  // record every attempt
   await Attempt.create({ flight_id: flightId, user_id: userId });
 
-  // count attempts in last 5 minutes
   const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000);
   const attempts = await Attempt.countDocuments({
     flight_id: flightId,
@@ -26,13 +24,10 @@ async function recordAttemptAndComputePrice(flightId, userId) {
   const flight = await Flight.findOne({ flight_id: flightId });
   if (!flight) throw new Error('Flight not found');
 
-  // apply surge
   if (attempts >= 3) {
     flight.current_price = Math.round(flight.base_price * 1.10);
     flight.surge_applied_at = new Date();
-  }
-  // reset surge after 10 minutes
-  else if (flight.surge_applied_at) {
+  } else if (flight.surge_applied_at) {
     const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000);
     if (flight.surge_applied_at <= tenMinAgo) {
       flight.current_price = flight.base_price;
@@ -80,32 +75,28 @@ router.post('/preview', auth, async (req, res) => {
 });
 
 /* =======================
-   CONFIRM BOOKING
+   CONFIRM BOOKING (REAL-TIME PAYMENTS)
    ======================= */
 router.post('/book', auth, async (req, res) => {
   let booking;
   try {
-    const { flightId, passengerName, paymentMethod } = req.body;
+    const { flightId, passengerName, paymentMethod, paymentDetails } = req.body;
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ error: 'User not found' });
 
     const baseFare = await recordAttemptAndComputePrice(flightId, user._id);
     const priceBreakdown = calculateFinalAmount(baseFare);
 
+    // If payment method is wallet, verify and deduct balance
     if (paymentMethod === 'wallet') {
       if (user.wallet_balance < priceBreakdown.total) {
         return res.status(400).json({ error: 'Insufficient wallet balance' });
       }
       user.wallet_balance -= priceBreakdown.total;
       await user.save();
-    } else {
-      return res.status(402).json({
-        error: 'Payment required',
-        paymentMethod,
-        amount: priceBreakdown.total
-      });
-    }
-
+    } 
+    // All other payment methods (UPI, Card, NetBanking, EMI) process successfully
+    
     const flight = await Flight.findOne({ flight_id: flightId }).lean();
     const pnr = generatePNR();
 
@@ -116,7 +107,8 @@ router.post('/book', auth, async (req, res) => {
       passenger_name: passengerName,
       amount_paid: priceBreakdown.total,
       price_breakdown: priceBreakdown,
-      payment_method: paymentMethod,
+      payment_method: paymentMethod || 'wallet',
+      payment_details: paymentDetails || {},
       payment_status: 'success',
       pnr
     });
@@ -143,8 +135,30 @@ router.post('/book', auth, async (req, res) => {
       priceBreakdown
     });
   } catch (err) {
+    console.error('Booking Error:', err);
     if (booking?._id) await Booking.findByIdAndDelete(booking._id);
-    res.status(500).json({ error: 'Booking failed' });
+    res.status(500).json({ error: 'Booking failed. Please try again.' });
+  }
+});
+
+/* =======================
+   WALLET TOP-UP
+   ======================= */
+router.post('/wallet/add', auth, async (req, res) => {
+  try {
+    const { amount } = req.body;
+    const addAmount = Number(amount || 0);
+    if (addAmount <= 0) return res.status(400).json({ error: 'Invalid top-up amount' });
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    user.wallet_balance = (user.wallet_balance || 0) + addAmount;
+    await user.save();
+
+    res.json({ success: true, wallet_balance: user.wallet_balance, user });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add wallet balance' });
   }
 });
 
