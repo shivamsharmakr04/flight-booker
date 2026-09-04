@@ -1,31 +1,43 @@
-// src/components/BookingModal.jsx
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNotify } from './NotificationSystem';
 
 export default function BookingModal({ flight, open, onClose, onConfirm, user }) {
   const { notify } = useNotify();
 
-  /* ===== STATES (must come BEFORE useEffect) ===== */
+  const [step, setStep] = useState(1); // Step 1: Seat & Class, Step 2: Passenger Info, Step 3: Payment & Confirm
+
   const [passengers, setPassengers] = useState([
     {
       name: user?.name || '',
       email: user?.email || '',
       phone: '',
-      passport: '',
-      seat: '',
+      seat: '12A',
       class: 'economy'
     }
   ]);
-  const [travelDate, setTravelDate] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState(null);
+
+  const [selectedSeatType, setSelectedSeatType] = useState('window'); // window, aisle, middle
+  const [selectedSeatNo, setSelectedSeatNo] = useState('12A');
+  const [travelDate, setTravelDate] = useState(new Date().toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState('wallet');
   const [loading, setLoading] = useState(false);
   const [priceBreakdown, setPriceBreakdown] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(600); // 10 minute price lock timer
 
-  /* ===== PREVIEW PRICE + TIMER ===== */
+  const availableSeats = [
+    { no: '12A', type: 'window', priceBonus: 0 },
+    { no: '12B', type: 'middle', priceBonus: 0 },
+    { no: '12C', type: 'aisle', priceBonus: 200 },
+    { no: '14A', type: 'window', priceBonus: 0 },
+    { no: '14B', type: 'middle', priceBonus: 0 },
+    { no: '14C', type: 'aisle', priceBonus: 200 }
+  ];
+
+  /* ===== PREVIEW PRICE & TIMER ===== */
   useEffect(() => {
     if (!open) return;
+    setStep(1);
 
     fetch('http://localhost:4000/api/bookings/preview', {
       method: 'POST',
@@ -33,32 +45,38 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
         'Content-Type': 'application/json',
         Authorization: `Bearer ${localStorage.getItem('token')}`
       },
-      body: JSON.stringify({ flightId: flight.flight_id,travelDate })
+      body: JSON.stringify({ flightId: flight.flight_id, travelDate })
     })
       .then(r => r.json())
       .then(d => {
-        setPriceBreakdown(d.priceBreakdown);
-        setTimeLeft(Math.floor((d.expiresAt - Date.now()) / 1000));
+        if (d.priceBreakdown) {
+          setPriceBreakdown(d.priceBreakdown);
+        }
+        if (d.expiresAt) {
+          setTimeLeft(Math.max(0, Math.floor((d.expiresAt - Date.now()) / 1000)));
+        }
       })
       .catch(() => {});
-  }, [open, flight.flight_id]);
+  }, [open, flight.flight_id, travelDate]);
 
   /* ===== COUNTDOWN ===== */
   useEffect(() => {
-    if (!timeLeft) return;
-    const t = setInterval(() => setTimeLeft(v => v - 1), 1000);
+    if (!open || timeLeft <= 0) return;
+    const t = setInterval(() => setTimeLeft(v => Math.max(0, v - 1)), 1000);
     return () => clearInterval(t);
-  }, [timeLeft]);
+  }, [open, timeLeft]);
 
   const addPassenger = () => {
-    setPassengers([...passengers, {
-      name: '',
-      email: '',
-      phone: '',
-      passport: '',
-      seat: '',
-      class: 'economy'
-    }]);
+    setPassengers([
+      ...passengers,
+      {
+        name: '',
+        email: '',
+        phone: '',
+        seat: `1${passengers.length + 4}A`,
+        class: 'economy'
+      }
+    ]);
   };
 
   const removePassenger = (index) => {
@@ -68,32 +86,48 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
   };
 
   const updatePassenger = (index, field, value) => {
-    const updatedPassengers = [...passengers];
-    updatedPassengers[index][field] = value;
-    setPassengers(updatedPassengers);
+    const updated = [...passengers];
+    updated[index][field] = value;
+    setPassengers(updated);
+  };
+
+  const handleNextStep = () => {
+    if (step === 1) {
+      if (!travelDate) {
+        notify('warning', 'Please select a valid travel date');
+        return;
+      }
+      setStep(2);
+    } else if (step === 2) {
+      if (passengers.some(p => !p.name || !p.email || !p.phone)) {
+        notify('warning', 'Please fill in required details for all passengers');
+        return;
+      }
+      setStep(3);
+    }
   };
 
   const handleConfirm = async () => {
-    if (!travelDate) {
-  notify('warning', 'Please select a travel date');
-  return;
-}
     if (!paymentMethod) {
-  notify('warning', 'Please select a payment method');
-  return;
-}
-    if (passengers.some(p => !p.name || !p.email || !p.phone)) {
-      notify('warning', 'Please fill all required passenger details'); // ✅ replaced alert
+      notify('warning', 'Please select a payment method');
       return;
     }
-    
+
+    if (paymentMethod === 'wallet' && user) {
+      const totalAmount = priceBreakdown?.total ?? flight.current_price * passengers.length;
+      if (user.wallet_balance < totalAmount) {
+        notify('warning', `Insufficient wallet balance (₹${user.wallet_balance}). Please select another payment method.`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
       await onConfirm({ passengers, paymentMethod });
       onClose();
     } catch (err) {
       console.error(err);
-      notify('error', 'Booking failed. Please try again.'); // ✅ failure alert
+      notify('error', 'Booking failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -101,374 +135,319 @@ export default function BookingModal({ flight, open, onClose, onConfirm, user })
 
   if (!open) return null;
 
+  const totalAmountPaid = (priceBreakdown?.total ?? flight.current_price) * passengers.length;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <motion.div 
+      {/* Backdrop */}
+      <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="absolute inset-0 bg-black/40"
+        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
         onClick={onClose}
-      ></motion.div>
-      
-      <motion.div 
-        initial={{ y: 40, opacity: 0, scale: 0.95 }}
+      />
+
+      <motion.div
+        initial={{ y: 30, opacity: 0, scale: 0.96 }}
         animate={{ y: 0, opacity: 1, scale: 1 }}
-        exit={{ y: 40, opacity: 0, scale: 0.95 }}
-        className="z-50 bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto"
+        exit={{ y: 30, opacity: 0, scale: 0.96 }}
+        className="z-50 bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto border border-slate-100 flex flex-col"
       >
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-600 p-6 text-white rounded-t-2xl">
-          <div className="flex justify-between items-start mb-4">
+        {/* Header with Flight Info */}
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-700 to-slate-900 p-6 text-white rounded-t-3xl relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+            <svg className="w-48 h-48" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+            </svg>
+          </div>
+
+          <div className="flex justify-between items-start mb-4 relative z-10">
             <div>
-              <h3 className="text-2xl font-bold">Confirm Booking</h3>
-              <p className="text-blue-100 text-sm mt-1">Complete your flight reservation</p>
+              <span className="px-2.5 py-1 bg-white/20 backdrop-blur-md rounded-full text-xs font-semibold tracking-wide uppercase text-blue-100">
+                {flight.airline} • {flight.flight_id}
+              </span>
+              <h3 className="text-2xl font-black mt-2 tracking-tight">Flight Reservation</h3>
+              <p className="text-blue-100 text-xs mt-1">
+                {flight.departure_city} ➔ {flight.arrival_city}
+              </p>
             </div>
-            <button 
+            <button
               onClick={onClose}
-              className="text-white hover:text-blue-200 transition-colors duration-200"
+              className="w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
-          
-          <div className="flex items-center gap-3">
-            <div className="bg-white bg-opacity-20 rounded-lg p-2">
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-              </svg>
+
+          {/* Stepper Tabs */}
+          <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-white/15 text-center text-xs font-semibold">
+            <div className={`py-1.5 rounded-xl transition-all ${step === 1 ? 'bg-white text-blue-900 font-bold shadow-md' : 'text-blue-200'}`}>
+              1. Seat & Date
             </div>
-            <div>
-              <div className="font-semibold">{flight.airline}</div>
-              <div className="text-sm text-blue-100">Flight {flight.flight_id}</div>
+            <div className={`py-1.5 rounded-xl transition-all ${step === 2 ? 'bg-white text-blue-900 font-bold shadow-md' : 'text-blue-200'}`}>
+              2. Passengers
+            </div>
+            <div className={`py-1.5 rounded-xl transition-all ${step === 3 ? 'bg-white text-blue-900 font-bold shadow-md' : 'text-blue-200'}`}>
+              3. Payment
             </div>
           </div>
         </div>
 
-        <div className="p-6 space-y-6">
-          {/* Flight Details */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="grid md:grid-cols-2 gap-4">
+        {/* Step Content */}
+        <div className="p-6 flex-1 space-y-6">
+          
+          {/* STEP 1: Date & Seat Selector */}
+          {step === 1 && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-5">
               <div>
-                <div className="text-sm text-gray-600 mb-1">From</div>
-                <div className="font-semibold">{flight.departure_city}</div>
-                <div className="text-sm text-gray-500">{flight.departure_time &&
-   !isNaN(new Date(flight.departure_time)) &&
-   new Date(flight.departure_time).toLocaleString()}</div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Select Travel Date
+                </label>
+                <input
+                  type="date"
+                  value={travelDate}
+                  min={new Date().toISOString().split('T')[0]}
+                  onChange={(e) => setTravelDate(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-medium text-slate-800"
+                />
               </div>
+
               <div>
-                <div className="text-sm text-gray-600 mb-1">To</div>
-                <div className="font-semibold">{flight.arrival_city}</div>
-                <div className="text-sm text-gray-500"> {flight.arrival_time &&
-   !isNaN(new Date(flight.arrival_time)) &&
-   new Date(flight.arrival_time).toLocaleString()}</div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  Choose Preferred Seat Type
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'window', label: 'Window Seat', desc: 'Best View' },
+                    { id: 'aisle', label: 'Aisle Seat', desc: 'Extra Space' },
+                    { id: 'middle', label: 'Middle Seat', desc: 'Standard' }
+                  ].map((seat) => (
+                    <button
+                      key={seat.id}
+                      type="button"
+                      onClick={() => setSelectedSeatType(seat.id)}
+                      className={`p-3 rounded-2xl border text-left transition-all ${
+                        selectedSeatType === seat.id
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-slate-800">{seat.label}</div>
+                      <div className="text-[11px] text-slate-500">{seat.desc}</div>
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          </div>
-                {/* Travel Date Selection */}
-<div className="bg-gray-50 rounded-lg p-4">
-  <label className="block text-sm font-medium text-gray-700 mb-2">
-    Travel Date
-  </label>
-  <input
-    type="date"
-    value={travelDate}
-    min={new Date().toISOString().split('T')[0]}
-    onChange={(e) => setTravelDate(e.target.value)}
-    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-    required
-  />
 
-  {travelDate && (
-    <div className="mt-2 text-sm text-gray-600">
-      Selected Date: <span className="font-medium">{travelDate}</span>
-    </div>
-  )}
-</div>
+              {/* Interactive Seat Picker Simulator Grid */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80">
+                <div className="text-xs font-bold text-slate-700 mb-3 flex items-center justify-between">
+                  <span>Available Flight Seats</span>
+                  <span className="text-[11px] text-blue-600 font-semibold">Selected: {selectedSeatNo}</span>
+                </div>
+                <div className="grid grid-cols-6 gap-2">
+                  {availableSeats.map((s) => (
+                    <button
+                      key={s.no}
+                      type="button"
+                      onClick={() => {
+                        setSelectedSeatNo(s.no);
+                        setSelectedSeatType(s.type);
+                        updatePassenger(0, 'seat', s.no);
+                      }}
+                      className={`py-2 rounded-xl text-xs font-bold transition-all border ${
+                        selectedSeatNo === s.no
+                          ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-500/30'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {s.no}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </motion.div>
+          )}
 
-          {/* Passengers Section */}
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-lg font-semibold text-gray-900">Passengers</h4>
-              <button 
-                onClick={addPassenger}
-                className="text-sm text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                </svg>
-                Add Passenger
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {passengers.map((passenger, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="border border-gray-200 rounded-lg p-4"
+          {/* STEP 2: Passengers Information */}
+          {step === 2 && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+              <div className="flex justify-between items-center">
+                <h4 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Passenger Details</h4>
+                <button
+                  type="button"
+                  onClick={addPassenger}
+                  className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-3 py-1.5 rounded-full border border-blue-100"
                 >
-                  <div className="flex justify-between items-start mb-3">
-                    <h5 className="font-medium text-gray-900">Passenger {index + 1}</h5>
+                  + Add Passenger
+                </button>
+              </div>
+
+              {passengers.map((p, idx) => (
+                <div key={idx} className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-xs font-bold text-slate-700">Passenger #{idx + 1}</span>
                     {passengers.length > 1 && (
                       <button
-                        onClick={() => removePassenger(index)}
-                        className="text-red-500 hover:text-red-700 transition-colors duration-200"
+                        type="button"
+                        onClick={() => removePassenger(idx)}
+                        className="text-xs text-rose-600 font-semibold hover:underline"
                       >
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
+                        Remove
                       </button>
                     )}
                   </div>
 
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
-                      <input
-                        type="text"
-                        value={passenger.name}
-                        onChange={(e) => updatePassenger(index, 'name', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                        placeholder="John Doe"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={passenger.email}
-                        onChange={(e) => updatePassenger(index, 'email', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                        placeholder="john@example.com"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                      <input
-                         type="tel"
-                                                      value={passenger.phone}
-                              onChange={(e) => {
-                                const val = e.target.value.replace(/\D/g, '');
-                                updatePassenger(index, 'phone', val);
-                              }}
-                              pattern="[0-9]{10,15}"
-                              minLength={10}
-                              maxLength={15}
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                              placeholder="Enter 10–15 digit phone number"
-                              required
-                            />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Seat Preference</label>
-                      <select
-                        value={passenger.seat}
-                        onChange={(e) => updatePassenger(index, 'seat', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                      >
-                        <option value="">Any</option>
-                        <option value="window">Window</option>
-                        <option value="aisle">Aisle</option>
-                        <option value="middle">Middle</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-                      <select
-                        value={passenger.class}
-                        onChange={(e) => updatePassenger(index, 'class', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200"
-                      >
-                        <option value="economy">Economy</option>
-                        <option value="premium">Premium Economy</option>
-                        <option value="business">Business</option>
-                        <option value="first">First Class</option>
-                      </select>
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      type="text"
+                      placeholder="Full Name"
+                      value={p.name}
+                      onChange={(e) => updatePassenger(idx, 'name', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <input
+                      type="email"
+                      placeholder="Email Address"
+                      value={p.email}
+                      onChange={(e) => updatePassenger(idx, 'email', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <input
+                      type="tel"
+                      placeholder="Phone Number (10 digits)"
+                      value={p.phone}
+                      onChange={(e) => updatePassenger(idx, 'phone', e.target.value.replace(/\D/g, ''))}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                    <select
+                      value={p.class}
+                      onChange={(e) => updatePassenger(idx, 'class', e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-medium focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="economy">Economy Class</option>
+                      <option value="premium">Premium Economy</option>
+                      <option value="business">Business Class</option>
+                    </select>
                   </div>
-                </motion.div>
+                </div>
               ))}
-            </div>
-          </div>
+            </motion.div>
+          )}
 
-          {/* Payment Options */}
-          <div>
-            <h4 className="text-lg font-semibold text-gray-900 mb-4">Payment Method</h4>
-            <div className="grid md:grid-cols-3 gap-3">
-              <button
-                onClick={() => setPaymentMethod('wallet')}
-                className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-                  paymentMethod === 'wallet' 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">Wallet</div>
-                    <div className="text-sm text-gray-500">Use wallet balance</div>
-                  </div>
+          {/* STEP 3: Payment Method & Confirmation */}
+          {step === 3 && (
+            <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="space-y-5">
+              
+              {/* Payment Methods */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-3">
+                  Select Payment Method
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {[
+                    { id: 'wallet', title: 'Wallet Balance', desc: user ? `Balance: ₹${user.wallet_balance}` : 'Sign in required' },
+                    { id: 'card', title: 'Credit/Debit Card', desc: 'Instant Processing' },
+                    { id: 'upi', title: 'UPI / GPay', desc: 'Google Pay, PhonePe' }
+                  ].map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setPaymentMethod(m.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all ${
+                        paymentMethod === m.id
+                          ? 'border-blue-600 bg-blue-50/80 ring-2 ring-blue-500/20'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="text-xs font-bold text-slate-800">{m.title}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">{m.desc}</div>
+                    </button>
+                  ))}
                 </div>
-              </button>
+              </div>
 
-              <button
-                onClick={() => setPaymentMethod('card')}
-                className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-                  paymentMethod === 'card' 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a1 1 0 011 1v4a1 1 0 01-1 1h-3a1 1 0 01-1-1V8a1 1 0 011-1h3zm-4 8v2m4-2v2" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">Credit Card</div>
-                    <div className="text-sm text-gray-500">Pay with card</div>
-                  </div>
+              {/* Price Breakdown Summary */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-2">
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>Base Price ({passengers.length} passenger{passengers.length > 1 ? 's' : ''})</span>
+                  <span className="font-semibold">₹{(priceBreakdown?.baseFare ?? flight.current_price) * passengers.length}</span>
                 </div>
-              </button>
-
-              <button
-                onClick={() => setPaymentMethod('upi')}
-                className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-                  paymentMethod === 'upi' 
-                    ? 'border-blue-500 bg-blue-50' 
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center">
-                    <svg className="w-5 h-5 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                    </svg>
-                  </div>
-                  <div className="text-left">
-                    <div className="font-medium">UPI</div>
-                    <div className="text-sm text-gray-500">Pay via UPI</div>
-                  </div>
+                <div className="flex justify-between text-xs text-slate-600">
+                  <span>Taxes & Convenience Fee</span>
+                  <span className="font-semibold">₹{(priceBreakdown?.tax ?? 0) * passengers.length}</span>
                 </div>
-              </button>
-              <button
-  onClick={() => setPaymentMethod('netbanking')}
-  className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-    paymentMethod === 'netbanking'
-      ? 'border-blue-500 bg-blue-50'
-      : 'border-gray-200 hover:border-gray-300'
-  }`}
->
-  <div className="font-medium">Net Banking</div>
-</button>
+                <div className="pt-2 border-t border-slate-200 flex justify-between items-center">
+                  <span className="text-sm font-bold text-slate-800">Grand Total</span>
+                  <span className="text-xl font-extrabold text-blue-700">₹{totalAmountPaid.toLocaleString('en-IN')}</span>
+                </div>
 
-<button
-  onClick={() => setPaymentMethod('emi')}
-  className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-    paymentMethod === 'emi'
-      ? 'border-blue-500 bg-blue-50'
-      : 'border-gray-200 hover:border-gray-300'
-  }`}
->
-  <div className="font-medium">EMI</div>
-</button>
-
-<button
-  onClick={() => setPaymentMethod('counter')}
-  className={`p-4 border-2 rounded-lg transition-all duration-200 ${
-    paymentMethod === 'counter'
-      ? 'border-blue-500 bg-blue-50'
-      : 'border-gray-200 hover:border-gray-300'
-  }`}
->
-  <div className="font-medium">Pay at Counter</div>
-</button>
-
-            </div>
-          </div>
-
-          {/* Summary */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <h4 className="font-semibold text-gray-900 mb-3">Booking Summary</h4>
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Base Fare</span>
-                <span className="font-medium">
-  ₹{priceBreakdown?.baseFare ?? flight.base_price}
-</span>
-
+                {timeLeft > 0 && (
+                  <div className="pt-2 text-[11px] text-amber-700 font-semibold flex items-center justify-between bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200/60">
+                    <span>⏱ Fare Price Lock Active</span>
+                    <span>{Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')} min remaining</span>
+                  </div>
+                )}
               </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Taxes & Fees</span>
-               <span className="font-medium">
-  ₹{priceBreakdown?.tax ?? 0}
-</span>
 
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Service Charge</span>
-                <span className="font-medium">
-  ₹{priceBreakdown?.serviceCharge ?? 0}
-</span>
+            </motion.div>
+          )}
 
-              </div>
-              <div className="border-t pt-2 flex justify-between">
-                <span className="font-semibold">Total</span>
-               <span className="font-bold text-lg text-blue-600">
-  ₹{priceBreakdown?.total ?? flight.current_price}
-</span>
-              {timeLeft > 0 && (
-  <div className="text-sm text-orange-600 font-medium mt-2">
-    ⏳ Complete payment within {Math.floor(timeLeft / 60)}:
-    {String(timeLeft % 60).padStart(2, '0')}
-  </div>
-)}
+        </div>
 
-              </div>
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div className="flex gap-3 pt-4">
+        {/* Footer Navigation Buttons */}
+        <div className="p-6 bg-slate-50 border-t border-slate-100 rounded-b-3xl flex justify-between items-center">
+          {step > 1 ? (
             <button
+              type="button"
+              onClick={() => setStep(step - 1)}
+              className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              Back
+            </button>
+          ) : (
+            <button
+              type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors duration-200 font-medium"
+              className="px-5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
             >
               Cancel
             </button>
+          )}
+
+          {step < 3 ? (
             <button
+              type="button"
+              onClick={handleNextStep}
+              className="px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs shadow-md transition-all flex items-center gap-1.5"
+            >
+              <span>Continue</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          ) : (
+            <button
+              type="button"
               onClick={handleConfirm}
               disabled={loading}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition-all duration-200 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold text-xs shadow-lg shadow-blue-500/25 transition-all disabled:opacity-50 flex items-center gap-2"
             >
               {loading ? (
-                <>
-                  <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Processing...
-                </>
+                <span>Confirming Booking...</span>
               ) : (
-                'Pay & Book'
+                <span>Pay & Book Now (₹{totalAmountPaid.toLocaleString('en-IN')})</span>
               )}
             </button>
-          </div>
+          )}
         </div>
+
       </motion.div>
     </div>
   );

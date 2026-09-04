@@ -1,105 +1,97 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useNotify } from './NotificationSystem';
 
 export default function Footer() {
+  const [email, setEmail] = useState('');
+  const { notify } = useNotify();
+
+  const handleSubscribe = (e) => {
+    e.preventDefault();
+    if (!email) return;
+    notify('success', 'Subscribed to flight price alerts! ✈️');
+    setEmail('');
+  };
+
   return (
-    <footer className="relative mt-16 bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 text-slate-200 overflow-hidden">
-      {/* Animated background glow */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute -top-24 -left-24 w-72 h-72 bg-indigo-500 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 right-0 w-72 h-72 bg-blue-500 rounded-full blur-3xl animate-pulse delay-1000"></div>
+    <footer className="relative mt-20 bg-gradient-to-br from-slate-950 via-slate-900 to-indigo-950 text-slate-300 overflow-hidden border-t border-slate-800">
+      
+      {/* Ambient background glow */}
+      <div className="absolute inset-0 opacity-15 pointer-events-none">
+        <div className="absolute -top-24 -left-24 w-80 h-80 bg-blue-500 rounded-full blur-3xl"></div>
+        <div className="absolute bottom-0 right-0 w-80 h-80 bg-indigo-500 rounded-full blur-3xl"></div>
       </div>
 
       <div className="relative max-w-7xl mx-auto px-6 py-14">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-10">
+          
           {/* Brand */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-          >
-            <h2 className="text-2xl font-bold text-white mb-3">✈ Flight Booker</h2>
-            <p className="text-sm text-slate-300 leading-relaxed">
-              Book flights smarter with real-time prices, secure payments, and instant ticket downloads.
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-white font-extrabold text-xl">
+              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-sm shadow-md">
+                ✈
+              </div>
+              <span>Flight Booker</span>
+            </div>
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Book domestic & international flights smarter with real-time fare updates, instant PDF boarding passes, and zero payment processing fees.
             </p>
-          </motion.div>
+          </div>
 
           {/* Quick Links */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-          >
-            <h3 className="text-lg font-semibold text-white mb-4">Quick Links</h3>
-            <ul className="space-y-2 text-sm">
-              {[['/', 'Home'], ['/search', 'Search Flights'], ['/bookings', 'My Bookings'], ['/about', 'About Us']].map(
-                ([to, label]) => (
-                  <li key={label}>
-                    <Link
-                      to={to}
-                      className="hover:text-indigo-400 transition-colors duration-300"
-                    >
-                      {label}
-                    </Link>
-                  </li>
-                )
-              )}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100">Quick Links</h3>
+            <ul className="space-y-2 text-xs">
+              <li><Link to="/" className="hover:text-sky-400 transition-colors">Search Flights</Link></li>
+              <li><Link to="/bookings" className="hover:text-sky-400 transition-colors">My Boarding Passes</Link></li>
+              <li><Link to="/about" className="hover:text-sky-400 transition-colors">About Us</Link></li>
+              <li><Link to="/contact" className="hover:text-sky-400 transition-colors">Help & Contact</Link></li>
             </ul>
-          </motion.div>
+          </div>
 
-          {/* Support */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <h3 className="text-lg font-semibold text-white mb-4">Support</h3>
-            <ul className="space-y-2 text-sm">
-              {[['/contact', 'Contact Us'], ['#', 'Help Center'], ['#', 'Privacy Policy'], ['#', 'Terms & Conditions']].map(
-                ([to, label]) => (
-                  <li key={label}>
-                    <Link
-                      to={to}
-                      className="hover:text-indigo-400 transition-colors duration-300"
-                    >
-                      {label}
-                    </Link>
-                  </li>
-                )
-              )}
+          {/* Popular Destinations */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100">Top Routes</h3>
+            <ul className="space-y-2 text-xs text-slate-400">
+              <li>Delhi ➔ Mumbai</li>
+              <li>Bangalore ➔ Goa</li>
+              <li>Mumbai ➔ Dubai</li>
+              <li>Chennai ➔ Kolkata</li>
             </ul>
-          </motion.div>
+          </div>
 
-          {/* Social */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-          >
-            <h3 className="text-lg font-semibold text-white mb-4">Follow Us</h3>
-            <div className="flex gap-4">
-              {["facebook", "twitter", "instagram", "linkedin"].map(icon => (
-                <a
-                  key={icon}
-                  href="#"
-                  className="w-10 h-10 flex items-center justify-center rounded-full bg-white/10 hover:bg-indigo-500 hover:scale-110 transition-all duration-300"
-                  aria-label={icon}
-                >
-                  <span className="capitalize text-sm">{icon[0]}</span>
-                </a>
-              ))}
-            </div>
-          </motion.div>
+          {/* Newsletter Subscription */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-100">Price Drop Alerts</h3>
+            <p className="text-xs text-slate-400">Subscribe for exclusive discount codes & flight price drop notifications.</p>
+            
+            <form onSubmit={handleSubscribe} className="flex gap-1.5">
+              <input
+                type="email"
+                placeholder="Enter email..."
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                required
+              />
+              <button
+                type="submit"
+                className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition-colors shrink-0"
+              >
+                Join
+              </button>
+            </form>
+          </div>
+
         </div>
 
-        {/* Bottom bar */}
-        <div className="mt-12 pt-6 border-t border-white/10 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-slate-400">
-          <p>© {new Date().getFullYear()} Flight Booker. All rights reserved.</p>
-          <p className="hover:text-indigo-400 transition-colors duration-300">
-            Designed for a smooth travel experience ✨
-          </p>
+        {/* Bottom Bar */}
+        <div className="mt-12 pt-6 border-t border-slate-800/80 flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+          <p>© {new Date().getFullYear()} Flight Booker Inc. All rights reserved.</p>
+          <p className="text-slate-400">Designed with SkyPass Glassmorphism & Framer Motion ✨</p>
         </div>
+
       </div>
     </footer>
   );
