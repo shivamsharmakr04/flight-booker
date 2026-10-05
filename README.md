@@ -46,11 +46,11 @@ The backend starts on `http://localhost:4000` by default. Set `MONGO_URI` if Mon
 
 ### Configure the AI trip planner
 
-Copy `backend/.env.example` to `backend/.env` and replace `OPENAI_API_KEY` with your key before starting the backend. Optionally set `OPENAI_MODEL` to use a different OpenAI chat-completions model (default: `gpt-4o-mini`). You can also configure these as backend process environment variables. The key is only read by the backend and must never be added to frontend variables or committed to source control.
+Copy `backend/.env.example` to `backend/.env` and set `GEMINI_API_KEY` to a key from [Google AI Studio](https://aistudio.google.com/apikey) before starting the backend. The default model is `gemini-2.5-flash`; optionally set `GEMINI_MODEL` to another Gemini model that supports streaming and function calling. The key is only read by the backend and must never be added to frontend variables or committed to source control.
 
 ```powershell
 Copy-Item backend/.env.example backend/.env
-# Edit backend/.env and set OPENAI_API_KEY to your key.
+# Edit backend/.env and set GEMINI_API_KEY to your Google AI Studio key.
 Set-Location backend
 npm start
 ```

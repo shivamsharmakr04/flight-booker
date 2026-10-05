@@ -2,48 +2,53 @@ const express = require('express');
 const Flight = require('../models/Flight');
 
 const router = express.Router();
-const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_MESSAGE_LENGTH = 1000;
 const MAX_MESSAGES = 10;
 const PROVIDER_TIMEOUT_MS = 30000;
 
 class ProviderRequestError extends Error {
-  constructor(status, code) {
+  constructor(status, code, message) {
     super('AI provider request failed');
     this.status = status;
     this.code = code;
+    this.providerMessage = message;
   }
 }
 
 function providerErrorMessage(error) {
   if (error instanceof ProviderRequestError && error.status === 429) {
-    if (error.code === 'insufficient_quota' || error.code === 'billing_hard_limit_reached') {
-      return 'The OpenAI API key or project has no available quota. Check its billing, credits, and usage limits, then restart the backend after updating OPENAI_API_KEY if needed.';
+    if (/quota|billing|daily limit|per.day/i.test(error.providerMessage || '')) {
+      return 'The Gemini API key or project has no available quota. Check Google AI Studio billing, quota, and project limits, then try again.';
     }
-    return 'The OpenAI API rate limit was reached. Wait a minute and try again. If this continues, check the project rate limits.';
+    return 'The Gemini API rate limit was reached. Wait a minute and try again. If this continues, check the project rate limits in Google AI Studio.';
   }
   if (error instanceof ProviderRequestError && error.status === 401) {
-    return 'OpenAI rejected the API key. Check that OPENAI_API_KEY in backend/.env is valid for the selected project, then restart the backend.';
+    return 'Google Gemini rejected the API key. Check that GEMINI_API_KEY in backend/.env is valid and that the Generative Language API is enabled.';
+  }
+  if (error instanceof ProviderRequestError && error.status === 403) {
+    return 'Google Gemini denied this request. Check the API key restrictions and make sure the Generative Language API is enabled for its Google Cloud project.';
+  }
+  if (error instanceof ProviderRequestError && error.status === 404) {
+    return 'The configured Gemini model was not found. Check GEMINI_MODEL in backend/.env.';
   }
   return 'The AI trip planner is temporarily unavailable. Please try again shortly.';
 }
 
 const tools = [{
-  type: 'function',
-  function: {
+  functionDeclarations: [{
     name: 'search_flights',
     description: 'Search the live Flight Booker inventory for a route and optional maximum fare.',
     parameters: {
-      type: 'object',
+      type: 'OBJECT',
       properties: {
-        departure: { type: 'string', description: 'Origin city' },
-        arrival: { type: 'string', description: 'Destination city' },
-        max_price: { type: 'number', description: 'Optional maximum fare in Indian rupees' },
+        departure: { type: 'STRING', description: 'Origin city' },
+        arrival: { type: 'STRING', description: 'Destination city' },
+        max_price: { type: 'NUMBER', description: 'Optional maximum fare in Indian rupees' },
       },
       required: ['departure', 'arrival'],
-      additionalProperties: false,
     },
-  },
+  }],
 }];
 
 function escapeRegex(value) {
@@ -53,7 +58,7 @@ function escapeRegex(value) {
 function normalizeSearchArguments(value) {
   let args;
   try {
-    args = JSON.parse(value);
+    args = typeof value === 'string' ? JSON.parse(value) : value;
   } catch {
     throw new Error('Invalid flight search criteria');
   }
@@ -96,39 +101,50 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
   signal.addEventListener('abort', abortRequest, { once: true });
   if (signal.aborted) abortRequest();
   try {
-    const response = await fetch(OPENAI_URL, {
+    const model = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        'x-goog-api-key': apiKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-        messages,
+        systemInstruction: { parts: [{ text: messages[0].content }] },
+        contents: messages.slice(1).map((message) => {
+          if (message.role === 'assistant' && message.parts) {
+            return { role: 'model', parts: message.parts };
+          }
+          if (message.role === 'tool') {
+            return { role: 'user', parts: [{ functionResponse: JSON.parse(message.content).functionResponse }] };
+          }
+          return {
+            role: message.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: message.content }],
+          };
+        }),
         tools,
-        tool_choice: 'auto',
-        parallel_tool_calls: false,
-        max_tokens: 500,
-        stream: true,
+        generationConfig: { maxOutputTokens: 500 },
       }),
       signal: requestController.signal,
     });
 
     if (!response.ok) {
       let code;
+      let message;
       try {
         const body = await response.json();
-        if (typeof body.error?.code === 'string') code = body.error.code;
-        else if (typeof body.error?.type === 'string') code = body.error.type;
+        if (typeof body.error?.status === 'string') code = body.error.status;
+        else if (typeof body.error?.code === 'number') code = String(body.error.code);
+        if (typeof body.error?.message === 'string') message = body.error.message;
       } catch {
         // Provider error bodies are not guaranteed to be JSON.
       }
-      console.error(`OpenAI request failed with status ${response.status}${code ? ` (${code})` : ''}`);
-      throw new ProviderRequestError(response.status, code);
+      console.error(`Gemini request failed with status ${response.status}${code ? ` (${code})` : ''}`);
+      throw new ProviderRequestError(response.status, code, message);
     }
     if (!response.body) throw new Error('AI provider returned no response stream');
 
-    const completion = { role: 'assistant', content: '', tool_calls: [] };
+    const completion = { role: 'model', parts: [], content: '', functionCall: null };
     reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -140,34 +156,29 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
         .map((line) => line.slice(5).trimStart())
         .join('\n');
 
-      if (!data || data === '[DONE]') {
-        if (data === '[DONE]') finished = true;
-        return;
-      }
+      if (!data) return;
 
       const chunk = JSON.parse(data);
       if (chunk.error) throw new Error('AI provider returned a stream error');
 
-      const delta = chunk.choices?.[0]?.delta;
-      if (!delta) return;
-
-      if (typeof delta.content === 'string') {
-        completion.content += delta.content;
-        onToken(delta.content);
-      }
-
-      for (const call of delta.tool_calls || []) {
-        if (!Number.isInteger(call.index) || call.index < 0 || call.index > 0) {
-          throw new Error('AI provider returned an unsupported tool call');
+      for (const candidate of chunk.candidates || []) {
+        for (const part of candidate.content?.parts || []) {
+          completion.parts.push(part);
+          if (typeof part.text === 'string') {
+            completion.content += part.text;
+            onToken(part.text);
+          }
+          if (part.functionCall) {
+            if (completion.functionCall && completion.functionCall.name !== part.functionCall.name) {
+              throw new Error('AI provider returned an unsupported function call');
+            }
+            completion.functionCall = {
+              name: part.functionCall.name,
+              args: { ...(completion.functionCall?.args || {}), ...(part.functionCall.args || {}) },
+            };
+          }
         }
-        let toolCall = completion.tool_calls[call.index];
-        if (!toolCall) {
-          toolCall = { id: '', type: 'function', function: { name: '', arguments: '' } };
-          completion.tool_calls[call.index] = toolCall;
-        }
-        if (call.id) toolCall.id = call.id;
-        if (call.function?.name) toolCall.function.name += call.function.name;
-        if (call.function?.arguments) toolCall.function.arguments += call.function.arguments;
+        if (candidate.finishReason) finished = true;
       }
     }
 
@@ -192,6 +203,7 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
     buffer += decoder.decode();
     if (!finished && buffer.trim()) processEvent(buffer);
 
+    if (!finished && (completion.content || completion.functionCall)) finished = true;
     if (!finished) throw new Error('AI provider stream ended unexpectedly');
     return completion;
   } finally {
@@ -233,8 +245,8 @@ function sendEvent(res, event, data) {
 }
 
 router.post('/chat/stream', async (req, res) => {
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'The AI trip planner is not configured. Set OPENAI_API_KEY in the backend environment.' });
+  if (!process.env.GEMINI_API_KEY) {
+    return res.status(503).json({ error: 'The AI trip planner is not configured. Set GEMINI_API_KEY in the backend environment.' });
   }
 
   const { messages } = req.body || {};
@@ -284,31 +296,33 @@ router.post('/chat/stream', async (req, res) => {
   res.flushHeaders();
 
   try {
-    let completion = await createCompletion(conversation, process.env.OPENAI_API_KEY, {
+    let completion = await createCompletion(conversation, process.env.GEMINI_API_KEY, {
       signal: controller.signal,
       onToken: (text) => sendEvent(res, 'token', { text }),
     });
     let searchCriteria = null;
 
-    if (completion.tool_calls.length) {
-      const toolCall = completion.tool_calls[0];
-      if (!toolCall.id || toolCall.function.name !== 'search_flights') {
+    if (completion.functionCall) {
+      const functionCall = completion.functionCall;
+      if (functionCall.name !== 'search_flights') {
         throw new Error('AI provider returned an unsupported tool call');
       }
 
-      const criteria = normalizeSearchArguments(toolCall.function.arguments);
+      const criteria = normalizeSearchArguments(functionCall.args);
       const flights = await searchFlights(criteria);
       searchCriteria = { departure: criteria.departure, arrival: criteria.arrival };
       sendEvent(res, 'search', searchCriteria);
 
-      conversation.push(completion);
+      conversation.push({ role: 'assistant', parts: completion.parts });
       conversation.push({
         role: 'tool',
-        tool_call_id: toolCall.id,
-        content: JSON.stringify({ flights }),
+        content: JSON.stringify({ functionResponse: {
+          name: functionCall.name,
+          response: { result: { flights } },
+        } }),
       });
 
-      completion = await createCompletion(conversation, process.env.OPENAI_API_KEY, {
+      completion = await createCompletion(conversation, process.env.GEMINI_API_KEY, {
         signal: controller.signal,
         onToken: (text) => sendEvent(res, 'token', { text }),
       });

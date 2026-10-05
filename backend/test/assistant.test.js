@@ -45,81 +45,75 @@ function postChat(messages) {
   });
 }
 
-function openAiStream(chunks) {
+function geminiStream(chunks) {
   const body = [
     ...chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`),
-    'data: [DONE]\n\n',
+    `data: ${JSON.stringify({ candidates: [{ finishReason: 'STOP' }] })}\n\n`,
   ].join('');
   return new Response(body, { headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 function tokenChunk(text) {
-  return { choices: [{ delta: { content: text } }] };
+  return { candidates: [{ content: { parts: [{ text }] } }] };
 }
 
 function toolChunk(criteria) {
-  return {
-    choices: [{
-      delta: {
-        tool_calls: [{
-          index: 0,
-          id: 'call_search',
-          type: 'function',
-          function: {
-            name: 'search_flights',
-            arguments: JSON.stringify(criteria),
-          },
-        }],
-      },
-    }],
-  };
+  return { candidates: [{ content: { parts: [{
+    functionCall: { name: 'search_flights', args: criteria },
+  }] } }] };
 }
 
 test('reports missing provider configuration before opening a stream', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
-  delete process.env.OPENAI_API_KEY;
+  const originalKey = process.env.GEMINI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
 
   try {
     const response = await postChat([{ role: 'user', content: 'Hello' }]);
     assert.equal(response.status, 503);
-    assert.match(JSON.parse(response.body).error, /OPENAI_API_KEY/);
+    assert.match(JSON.parse(response.body).error, /GEMINI_API_KEY/);
   } finally {
-    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
   }
 });
 
-test('streams assistant tokens as server-sent events', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
+test('streams Gemini response tokens as server-sent events', async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
   const originalFetch = global.fetch;
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.GEMINI_API_KEY = 'test-key';
   let providerRequest;
-  global.fetch = async (_url, options) => {
+  let providerUrl;
+  global.fetch = async (url, options) => {
+    providerUrl = url;
+    assert.equal(options.headers['x-goog-api-key'], 'test-key');
     providerRequest = JSON.parse(options.body);
-    return openAiStream([tokenChunk('Hello'), tokenChunk(' traveler!')]);
+    return geminiStream([tokenChunk('Hello'), tokenChunk(' traveler!')]);
   };
 
   try {
     const response = await postChat([{ role: 'user', content: 'Hello' }]);
     assert.equal(response.status, 200);
     assert.match(response.headers['content-type'], /text\/event-stream/);
-    assert.equal(providerRequest.stream, true);
+    assert.match(providerUrl, /models\/gemini-2\.5-flash:streamGenerateContent\?alt=sse/);
+    assert.equal(providerRequest.systemInstruction.parts[0].text.includes('trip-planning assistant'), true);
+    assert.equal(providerRequest.contents[0].role, 'user');
+    assert.deepEqual(providerRequest.tools[0].functionDeclarations[0].name, 'search_flights');
     assert.match(response.body, /event: token\ndata: \{"text":"Hello"\}/);
     assert.match(response.body, /event: token\ndata: \{"text":" traveler!"\}/);
     assert.match(response.body, /event: done\ndata: \{"search":null\}/);
   } finally {
     global.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
   }
 });
 
-test('explains when OpenAI rejects requests because the project has no quota', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
+test('explains when Gemini rejects requests because the project has no quota', async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
   const originalFetch = global.fetch;
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.GEMINI_API_KEY = 'test-key';
   global.fetch = async () => new Response(JSON.stringify({
-    error: { code: 'insufficient_quota', type: 'insufficient_quota' },
+    error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'You exceeded your current quota. Check billing.' },
   }), { status: 429, headers: { 'Content-Type': 'application/json' } });
 
   try {
@@ -127,58 +121,59 @@ test('explains when OpenAI rejects requests because the project has no quota', a
     assert.equal(response.status, 200);
     assert.match(response.body, /event: error/);
     assert.match(response.body, /no available quota/);
-    assert.match(response.body, /billing, credits, and usage limits/);
+    assert.match(response.body, /Google AI Studio billing/);
   } finally {
     global.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
   }
 });
 
-test('suggests waiting when OpenAI returns a temporary rate limit', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
+test('suggests waiting when Gemini returns a temporary rate limit', async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
   const originalFetch = global.fetch;
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.GEMINI_API_KEY = 'test-key';
   global.fetch = async () => new Response(JSON.stringify({
-    error: { code: 'rate_limit_exceeded', type: 'rate_limit_error' },
+    error: { code: 429, status: 'RESOURCE_EXHAUSTED', message: 'Requests per minute exceeded.' },
   }), { status: 429, headers: { 'Content-Type': 'application/json' } });
 
   try {
     const response = await postChat([{ role: 'user', content: 'Hello' }]);
     assert.equal(response.status, 200);
     assert.match(response.body, /event: error/);
-    assert.match(response.body, /rate limit was reached/);
+    assert.match(response.body, /Gemini API rate limit was reached/);
     assert.match(response.body, /Wait a minute and try again/);
   } finally {
     global.fetch = originalFetch;
-    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
   }
 });
 
 test('searches inventory before streaming route recommendations', async () => {
-  const originalKey = process.env.OPENAI_API_KEY;
+  const originalKey = process.env.GEMINI_API_KEY;
   const originalFetch = global.fetch;
   const originalFind = Flight.find;
-  process.env.OPENAI_API_KEY = 'test-key';
+  process.env.GEMINI_API_KEY = 'test-key';
   let providerCalls = 0;
   let flightFilter;
   let flightSort;
+  let followUpRequest;
   global.fetch = async (_url, options) => {
     providerCalls += 1;
     const request = JSON.parse(options.body);
     if (providerCalls === 1) {
-      assert.equal(request.stream, true);
-      return openAiStream([toolChunk({
+      return geminiStream([toolChunk({
         departure: 'Delhi',
         arrival: 'Mumbai',
         max_price: 2500,
       })]);
     }
 
-    assert.equal(request.messages.at(-1).role, 'tool');
-    assert.match(request.messages.at(-1).content, /XG101/);
-    return openAiStream([tokenChunk('AirX is available for ₹2,200.')]);
+    followUpRequest = request;
+    assert.equal(request.contents.at(-1).role, 'user');
+    assert.match(JSON.stringify(request.contents.at(-1).parts), /XG101/);
+    return geminiStream([tokenChunk('AirX is available for ₹2,200.')]);
   };
   Flight.find = (filter) => {
     flightFilter = filter;
@@ -208,6 +203,9 @@ test('searches inventory before streaming route recommendations', async () => {
     const response = await postChat([{ role: 'user', content: 'Find flights under ₹2,500 from Delhi to Mumbai' }]);
     assert.equal(response.status, 200);
     assert.match(flightFilter.departure_city.$regex.source, /Delhi/i);
+    assert.equal(followUpRequest.contents.at(-2).role, 'model');
+    assert.equal(followUpRequest.contents.at(-2).parts[0].functionCall.name, 'search_flights');
+    assert.equal(followUpRequest.contents.at(-1).parts[0].functionResponse.name, 'search_flights');
     assert.deepEqual(flightFilter.$or, [
       { current_price: { $lte: 2500 } },
       { current_price: null, base_price: { $lte: 2500 } },
@@ -219,7 +217,7 @@ test('searches inventory before streaming route recommendations', async () => {
   } finally {
     global.fetch = originalFetch;
     Flight.find = originalFind;
-    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
-    else process.env.OPENAI_API_KEY = originalKey;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
   }
 });
