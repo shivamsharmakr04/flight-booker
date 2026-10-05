@@ -2,8 +2,9 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { searchFlights, bookFlight } from '../api';
 import FlightCard from '../components/FlightCard';
 import BookingModal from '../components/BookingModal';
+import TripAssistant from '../components/TripAssistant';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useNotify } from '../components/NotificationSystem';
 
 function useDebounce(value, delay = 400) {
@@ -38,6 +39,16 @@ export default function Search({ user, setUser }) {
 
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('assistant') === '1') {
+      setSearchParams((params) => {
+        params.delete('assistant');
+        return params;
+      }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const popularRoutes = [
     { from: 'Delhi', to: 'Mumbai', label: 'Delhi ➔ Mumbai' },
@@ -171,6 +182,12 @@ export default function Search({ user, setUser }) {
     setDepartureQuery(route.from);
     setArrivalQuery(route.to);
     fetchFlights(route.from, route.to, travelDate);
+  };
+
+  const applyAssistantSearch = ({ departure, arrival }) => {
+    setDepartureQuery(departure);
+    setArrivalQuery(arrival);
+    fetchFlights(departure, arrival, travelDate);
   };
 
   return (
@@ -445,6 +462,10 @@ export default function Search({ user, setUser }) {
         )}
       </AnimatePresence>
 
+      <TripAssistant
+        onSearch={applyAssistantSearch}
+        openOnMount={searchParams.get('assistant') === '1'}
+      />
     </div>
   );
 }

@@ -48,6 +48,15 @@ export default function Navbar({ user, setUser }) {
       ),
     },
     {
+      name: 'AI Trip Planner',
+      path: '/?assistant=1',
+      icon: (
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v2m0 14v2m9-9h-2M5 12H3m15.364-6.364-1.414 1.414M7.05 16.95l-1.414 1.414m12.728 0-1.414-1.414M7.05 7.05 5.636 5.636M15 9l-3 3-3 3m3-3V7" />
+        </svg>
+      ),
+    },
+    {
       name: 'Booking History',
       path: '/bookings',
       icon: (

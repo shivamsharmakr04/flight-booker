@@ -6,6 +6,7 @@ const flightsRoute = require('./routes/flights');
 const authRoute = require('./routes/auth');
 const bookingsRoute = require('./routes/bookings');
 const contactRoutes = require('./routes/contact');
+const assistantRoute = require('./routes/assistant');
 const fs = require('fs');
 
 const app = express();
@@ -23,6 +24,7 @@ app.use('/api/flights', flightsRoute);
 app.use('/api/auth', authRoute);
 app.use('/api/bookings', bookingsRoute);
 app.use('/api/contact', contactRoutes);
+app.use('/api/assistant', assistantRoute);
 app.use('/tickets', express.static(path.resolve(__dirname, '../tickets' )));
 
 // simple health

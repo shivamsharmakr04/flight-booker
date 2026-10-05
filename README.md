@@ -18,6 +18,7 @@ A modern, high-performance, full-stack flight booking web application built with
 - **Interactive Location Swap**: 180° animated rotation button to swap departure and destination inputs.
 - **Dynamic Price Filtering**: Real-time price slider, airline filter dropdowns, and sorting (Price Low to High, High to Low, Airline A-Z).
 - **Demand Surge Engine**: Backend monitors flight search attempts and automatically adjusts surge fares during peak demand windows.
+- **AI Trip Planner**: Ask for route and budget recommendations in natural language. It searches the live flight inventory and can apply a suggested route to flight search.
 
 ### 💳 Multi-Channel Real-Time Payment Gateway
 - **UPI & VPA Payment**: Auto-fill demo UPI ID, custom VPA input (e.g. `name@okicici`), handle quick chips (`@okaxis`, `@ybl`, `@paytm`), and app selection (GPay, PhonePe, Paytm).
@@ -120,6 +121,14 @@ npm start
 ```
 > The backend server will start on **`http://localhost:4000`**.
 
+#### Configure the AI trip planner
+Set `OPENAI_API_KEY` in the backend process environment before starting the server. Optionally set `OPENAI_MODEL` to use a different OpenAI chat-completions model (default: `gpt-4o-mini`). For example, in PowerShell:
+```powershell
+$env:OPENAI_API_KEY = "your-openai-api-key"
+npm start
+```
+The key is only read by the backend and must never be added to frontend variables or committed to source control. Without a key, flight search and booking continue to work; the assistant reports that it is not configured. The current flight inventory does not include schedules or date availability, so the assistant does not claim to verify flight times or dates.
+
 ### 3️⃣ Frontend Setup
 In a new terminal window, navigate to the root directory:
 ```bash
@@ -143,6 +152,11 @@ npm run dev
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
 | `GET` | `/api/flights/search` | Search flights by departure, arrival, and travel date |
+
+### ✨ AI Trip Planner (`/api/assistant`)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/assistant/chat` | Send a bounded conversation and receive inventory-grounded trip recommendations |
 
 ### 💳 Bookings & Wallet Endpoints (`/api/bookings`)
 | Method | Endpoint | Description | Auth Required |

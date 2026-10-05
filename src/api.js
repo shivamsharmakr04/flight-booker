@@ -19,6 +19,11 @@ export async function searchFlights(params) {
   return res.data.flights;
 }
 
+export async function askTripAssistant(messages) {
+  const res = await API.post('/assistant/chat', { messages });
+  return res.data;
+}
+
 export async function bookFlight(data) {
   const res = await API.post('/bookings/book', data);
   return res.data;
