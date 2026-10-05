@@ -108,6 +108,57 @@ test('streams Gemini response tokens as server-sent events', async () => {
   }
 });
 
+test('accepts a full Gemini model resource name in configuration', async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = global.fetch;
+  process.env.GEMINI_API_KEY = 'test-key';
+  process.env.GEMINI_MODEL = 'models/gemini-2.5-flash';
+  let providerUrl;
+  global.fetch = async (url) => {
+    providerUrl = url;
+    return geminiStream([tokenChunk('Hello')]);
+  };
+
+  try {
+    const response = await postChat([{ role: 'user', content: 'Hello' }]);
+    assert.equal(response.status, 200);
+    assert.match(providerUrl, /\/models\/gemini-2\.5-flash:streamGenerateContent/);
+    assert.doesNotMatch(providerUrl, /\/models\/models\//);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = originalModel;
+  }
+});
+
+test('includes the unavailable Gemini model ID in the error', async () => {
+  const originalKey = process.env.GEMINI_API_KEY;
+  const originalModel = process.env.GEMINI_MODEL;
+  const originalFetch = global.fetch;
+  process.env.GEMINI_API_KEY = 'test-key';
+  process.env.GEMINI_MODEL = 'gemini-not-available';
+  global.fetch = async () => new Response(JSON.stringify({
+    error: { code: 404, status: 'NOT_FOUND', message: 'Model not found.' },
+  }), { status: 404, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    const response = await postChat([{ role: 'user', content: 'Hello' }]);
+    assert.equal(response.status, 200);
+    const errorData = JSON.parse(response.body.match(/data: (.+)/)[1]);
+    assert.match(errorData.error, /Gemini model "gemini-not-available" was not found/);
+    assert.match(errorData.error, /gemini-2\.5-flash/);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = originalKey;
+    if (originalModel === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = originalModel;
+  }
+});
+
 test('explains when Gemini rejects requests because the project has no quota', async () => {
   const originalKey = process.env.GEMINI_API_KEY;
   const originalFetch = global.fetch;
