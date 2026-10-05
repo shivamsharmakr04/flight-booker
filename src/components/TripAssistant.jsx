@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { MessageCircle, Send, Sparkles, X } from 'lucide-react';
-import { askTripAssistant } from '../api';
+import { streamTripAssistant } from '../api';
 
 const initialMessage = {
   role: 'assistant',
@@ -20,6 +20,9 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
   const [isSending, setIsSending] = useState(false);
   const inputRef = useRef(null);
   const messagesEndRef = useRef(null);
+  const activeRequestRef = useRef(null);
+  const pendingTextRef = useRef('');
+  const animationFrameRef = useRef(null);
 
   useEffect(() => {
     if (openOnMount) setIsOpen(true);
@@ -30,36 +33,91 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
   }, [isOpen]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({ behavior: isSending ? 'auto' : 'smooth' });
   }, [messages, isSending]);
+
+  useEffect(() => () => {
+    activeRequestRef.current?.abort();
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current);
+    }
+  }, []);
+
+  function flushStreamedText(messageIndex) {
+    const text = pendingTextRef.current;
+    pendingTextRef.current = '';
+    if (!text) return;
+
+    setMessages((current) => current.map((item, index) => (
+      index === messageIndex ? { ...item, content: item.content + text } : item
+    )));
+  }
 
   async function sendMessage(event, message = input) {
     event?.preventDefault();
     const content = message.trim();
-    if (!content || isSending) return;
+    if (!content || activeRequestRef.current) return;
 
     const nextMessages = [...messages, { role: 'user', content }];
-    setMessages(nextMessages);
+    const assistantIndex = nextMessages.length;
+    setMessages([...nextMessages, { role: 'assistant', content: '', streaming: true }]);
     setInput('');
     setIsSending(true);
 
+    const controller = new AbortController();
+    activeRequestRef.current = controller;
+
     try {
-      const result = await askTripAssistant(
+      await streamTripAssistant(
         nextMessages.slice(-10).map(({ role, content: text }) => ({ role, content: text })),
-      );
-      setMessages((current) => [
-        ...current,
         {
-          role: 'assistant',
-          content: result.reply,
-          search: result.search,
+          signal: controller.signal,
+          onToken: (text) => {
+            pendingTextRef.current += text;
+            if (animationFrameRef.current === null) {
+              animationFrameRef.current = window.requestAnimationFrame(() => {
+                animationFrameRef.current = null;
+                flushStreamedText(assistantIndex);
+              });
+            }
+          },
+          onSearch: (search) => {
+            setMessages((current) => current.map((item, index) => (
+              index === assistantIndex ? { ...item, search } : item
+            )));
+          },
         },
-      ]);
+      );
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      flushStreamedText(assistantIndex);
+      setMessages((current) => current.map((item, index) => (
+        index === assistantIndex ? { ...item, streaming: false } : item
+      )));
     } catch (error) {
-      const messageText = error.response?.data?.error
-        || 'The trip assistant could not respond right now. Please try again shortly.';
-      setMessages((current) => [...current, { role: 'assistant', content: messageText, isError: true }]);
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      flushStreamedText(assistantIndex);
+      if (error.name !== 'AbortError') {
+        const messageText = error.message
+          || 'The trip assistant could not respond right now. Please try again shortly.';
+        setMessages((current) => current.map((item, index) => (
+          index === assistantIndex
+            ? {
+                ...item,
+                content: `${item.content}${item.content ? '\n\n' : ''}${messageText}`,
+                isError: true,
+                streaming: false,
+              }
+            : item
+        )));
+      }
     } finally {
+      if (activeRequestRef.current === controller) activeRequestRef.current = null;
       setIsSending(false);
     }
   }
@@ -95,7 +153,13 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
               </button>
             </header>
 
-            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4" aria-live="polite">
+            <div
+              className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4"
+              role="log"
+              aria-label="Trip planner conversation"
+              aria-live="polite"
+              aria-relevant="additions text"
+            >
               {messages.map((item, index) => (
                 <div
                   key={`${item.role}-${index}`}
@@ -110,7 +174,15 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
                           : 'rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-sm'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{item.content}</p>
+                    <p className="whitespace-pre-wrap">
+                      {item.content}
+                      {item.streaming && !item.content && (
+                        <span className="text-slate-400" role="status">Thinking…</span>
+                      )}
+                    </p>
+                    {item.streaming && item.content && (
+                      <span className="ml-0.5 inline-block h-3 w-1 animate-pulse rounded bg-blue-600" aria-label="Generating reply" />
+                    )}
                     {item.search?.departure && item.search?.arrival && (
                       <button
                         type="button"
@@ -140,11 +212,6 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
                   ))}
                 </div>
               )}
-              {isSending && (
-                <p className="text-xs font-medium text-slate-500" role="status">
-                  Finding the best options…
-                </p>
-              )}
               <div ref={messagesEndRef} />
             </div>
 
@@ -164,7 +231,7 @@ export default function TripAssistant({ onSearch, openOnMount = false }) {
                   }}
                   maxLength={1000}
                   rows={1}
-                  placeholder="Ask about a route or budget…"
+                  placeholder={isSending ? 'Generating a reply…' : 'Ask about a route or budget…'}
                   className="max-h-24 min-h-10 flex-1 resize-y rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
                 />
                 <button

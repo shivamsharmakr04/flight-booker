@@ -5,7 +5,7 @@ A full-stack flight reservation application built with React, Node.js, Express, 
 ## Highlights
 
 - Flight search, filtering, and fare sorting
-- AI trip planner with natural-language flight recommendations from the live inventory
+- Real-time AI trip planner with streamed replies and natural-language flight recommendations from the live inventory
 - Interactive seat selection and passenger management
 - Payment-flow simulation and wallet workflow
 - JWT authentication and booking history
@@ -46,14 +46,16 @@ The backend starts on `http://localhost:4000` by default. Set `MONGO_URI` if Mon
 
 ### Configure the AI trip planner
 
-Set `OPENAI_API_KEY` in the backend process environment before starting the server. Optionally set `OPENAI_MODEL` to use a different OpenAI chat-completions model (default: `gpt-4o-mini`). For example, in PowerShell:
+Copy `backend/.env.example` to `backend/.env` and replace `OPENAI_API_KEY` with your key before starting the backend. Optionally set `OPENAI_MODEL` to use a different OpenAI chat-completions model (default: `gpt-4o-mini`). You can also configure these as backend process environment variables. The key is only read by the backend and must never be added to frontend variables or committed to source control.
 
 ```powershell
-$env:OPENAI_API_KEY = "your-openai-api-key"
+Copy-Item backend/.env.example backend/.env
+# Edit backend/.env and set OPENAI_API_KEY to your key.
+Set-Location backend
 npm start
 ```
 
-The key is only read by the backend and must never be added to frontend variables or committed to source control. Without a key, flight search and booking continue to work; the assistant reports that it is not configured. The current flight inventory does not include schedules or date availability, so the assistant does not claim to verify flight times or dates.
+Without a key, flight search and booking continue to work; the assistant explains how to configure the missing key. Assistant replies stream to the chat as they are generated. The current flight inventory does not include schedules or date availability, so the assistant does not claim to verify flight times or dates.
 
 ### Frontend
 
@@ -85,7 +87,7 @@ The frontend launches on `http://localhost:5173`.
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/assistant/chat` | Receive inventory-grounded trip recommendations |
+| `POST` | `/api/assistant/chat/stream` | Stream inventory-grounded trip recommendations |
 
 ### Bookings and Wallet (`/api/bookings`)
 

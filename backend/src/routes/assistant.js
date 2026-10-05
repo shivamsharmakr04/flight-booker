@@ -4,6 +4,8 @@ const Flight = require('../models/Flight');
 const router = express.Router();
 const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
 const MAX_MESSAGE_LENGTH = 1000;
+const MAX_MESSAGES = 10;
+const PROVIDER_TIMEOUT_MS = 30000;
 
 const tools = [{
   type: 'function',
@@ -28,9 +30,16 @@ function escapeRegex(value) {
 }
 
 function normalizeSearchArguments(value) {
-  const args = JSON.parse(value);
+  let args;
+  try {
+    args = JSON.parse(value);
+  } catch {
+    throw new Error('Invalid flight search criteria');
+  }
+
   if (
-    typeof args.departure !== 'string'
+    !args
+    || typeof args.departure !== 'string'
     || typeof args.arrival !== 'string'
     || !args.departure.trim()
     || !args.arrival.trim()
@@ -54,10 +63,17 @@ function normalizeSearchArguments(value) {
   };
 }
 
-async function createCompletion(messages, apiKey) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 20000);
-
+async function createCompletion(messages, apiKey, { signal, onToken }) {
+  const requestController = new AbortController();
+  const abortRequest = () => requestController.abort(signal.reason);
+  const timeout = setTimeout(
+    () => requestController.abort(new Error('AI provider request timed out')),
+    PROVIDER_TIMEOUT_MS,
+  );
+  let reader;
+  let finished = false;
+  signal.addEventListener('abort', abortRequest, { once: true });
+  if (signal.aborted) abortRequest();
   try {
     const response = await fetch(OPENAI_URL, {
       method: 'POST',
@@ -70,24 +86,92 @@ async function createCompletion(messages, apiKey) {
         messages,
         tools,
         tool_choice: 'auto',
+        parallel_tool_calls: false,
         max_tokens: 500,
+        stream: true,
       }),
-      signal: controller.signal,
+      signal: requestController.signal,
     });
 
     if (!response.ok) {
       console.error(`OpenAI request failed with status ${response.status}`);
       throw new Error('AI provider request failed');
     }
+    if (!response.body) throw new Error('AI provider returned no response stream');
 
-    const result = await response.json();
-    const message = result.choices?.[0]?.message;
-    if (!message || (typeof message.content !== 'string' && !message.tool_calls?.length)) {
-      throw new Error('AI provider returned an invalid response');
+    const completion = { role: 'assistant', content: '', tool_calls: [] };
+    reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    function processEvent(eventText) {
+      const data = eventText
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trimStart())
+        .join('\n');
+
+      if (!data || data === '[DONE]') {
+        if (data === '[DONE]') finished = true;
+        return;
+      }
+
+      const chunk = JSON.parse(data);
+      if (chunk.error) throw new Error('AI provider returned a stream error');
+
+      const delta = chunk.choices?.[0]?.delta;
+      if (!delta) return;
+
+      if (typeof delta.content === 'string') {
+        completion.content += delta.content;
+        onToken(delta.content);
+      }
+
+      for (const call of delta.tool_calls || []) {
+        if (!Number.isInteger(call.index) || call.index < 0 || call.index > 0) {
+          throw new Error('AI provider returned an unsupported tool call');
+        }
+        let toolCall = completion.tool_calls[call.index];
+        if (!toolCall) {
+          toolCall = { id: '', type: 'function', function: { name: '', arguments: '' } };
+          completion.tool_calls[call.index] = toolCall;
+        }
+        if (call.id) toolCall.id = call.id;
+        if (call.function?.name) toolCall.function.name += call.function.name;
+        if (call.function?.arguments) toolCall.function.arguments += call.function.arguments;
+      }
     }
-    return message;
+
+    while (!finished) {
+      if (requestController.signal.aborted) {
+        throw requestController.signal.reason || new Error('Request aborted');
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      let boundary = buffer.search(/\r?\n\r?\n/);
+      while (boundary !== -1) {
+        const eventText = buffer.slice(0, boundary);
+        const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];
+        buffer = buffer.slice(boundary + separator.length);
+        processEvent(eventText);
+        if (finished) break;
+        boundary = buffer.search(/\r?\n\r?\n/);
+      }
+    }
+    buffer += decoder.decode();
+    if (!finished && buffer.trim()) processEvent(buffer);
+
+    if (!finished) throw new Error('AI provider stream ended unexpectedly');
+    return completion;
   } finally {
     clearTimeout(timeout);
+    signal.removeEventListener('abort', abortRequest);
+    if (reader) {
+      if (!finished) await reader.cancel().catch(() => {});
+      reader.releaseLock();
+    }
   }
 }
 
@@ -113,14 +197,20 @@ async function searchFlights(criteria) {
   }));
 }
 
-router.post('/chat', async (req, res) => {
+function sendEvent(res, event, data) {
+  if (res.destroyed || res.writableEnded) return false;
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  return true;
+}
+
+router.post('/chat/stream', async (req, res) => {
   if (!process.env.OPENAI_API_KEY) {
-    return res.status(503).json({ error: 'The AI trip planner is not configured yet.' });
+    return res.status(503).json({ error: 'The AI trip planner is not configured. Set OPENAI_API_KEY in the backend environment.' });
   }
 
   const { messages } = req.body || {};
-  if (!Array.isArray(messages) || messages.length < 1 || messages.length > 10) {
-    return res.status(400).json({ error: 'Send between 1 and 10 chat messages.' });
+  if (!Array.isArray(messages) || messages.length < 1 || messages.length > MAX_MESSAGES) {
+    return res.status(400).json({ error: `Send between 1 and ${MAX_MESSAGES} chat messages.` });
   }
 
   const chatMessages = [];
@@ -148,59 +238,72 @@ router.post('/chat', async (req, res) => {
     ...chatMessages,
   ];
 
+  const controller = new AbortController();
+  const onResponseClose = () => {
+    if (!res.writableEnded) controller.abort(new Error('Client disconnected'));
+  };
+  res.once('close', onResponseClose);
+  const heartbeat = setInterval(() => {
+    if (!res.destroyed && !res.writableEnded) res.write(': keep-alive\n\n');
+  }, 15000);
+  res.status(200).set({
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+  });
+  res.flushHeaders();
+
   try {
-    let completion = await createCompletion(conversation, process.env.OPENAI_API_KEY);
+    let completion = await createCompletion(conversation, process.env.OPENAI_API_KEY, {
+      signal: controller.signal,
+      onToken: (text) => sendEvent(res, 'token', { text }),
+    });
     let searchCriteria = null;
 
-    if (completion.tool_calls?.length) {
-      conversation.push(completion);
-      for (const toolCall of completion.tool_calls) {
-        if (toolCall.function?.name !== 'search_flights') {
-          conversation.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ error: 'Unsupported tool' }),
-          });
-          continue;
-        }
-
-        try {
-          const criteria = normalizeSearchArguments(toolCall.function.arguments);
-          const flights = await searchFlights(criteria);
-          searchCriteria = criteria;
-          conversation.push({
-            role: 'tool',
-            tool_call_id: toolCall.id,
-            content: JSON.stringify({ flights }),
-          });
-        } catch (error) {
-          if (error.message === 'Invalid flight search criteria' || error.message === 'Invalid maximum price') {
-            conversation.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: JSON.stringify({ error: error.message }),
-            });
-          } else {
-            throw error;
-          }
-        }
+    if (completion.tool_calls.length) {
+      const toolCall = completion.tool_calls[0];
+      if (!toolCall.id || toolCall.function.name !== 'search_flights') {
+        throw new Error('AI provider returned an unsupported tool call');
       }
-      completion = await createCompletion(conversation, process.env.OPENAI_API_KEY);
+
+      const criteria = normalizeSearchArguments(toolCall.function.arguments);
+      const flights = await searchFlights(criteria);
+      searchCriteria = { departure: criteria.departure, arrival: criteria.arrival };
+      sendEvent(res, 'search', searchCriteria);
+
+      conversation.push(completion);
+      conversation.push({
+        role: 'tool',
+        tool_call_id: toolCall.id,
+        content: JSON.stringify({ flights }),
+      });
+
+      completion = await createCompletion(conversation, process.env.OPENAI_API_KEY, {
+        signal: controller.signal,
+        onToken: (text) => sendEvent(res, 'token', { text }),
+      });
+    } else if (completion.content) {
+      sendEvent(res, 'token', { text: completion.content });
     }
 
-    if (typeof completion.content !== 'string' || !completion.content.trim()) {
+    if (!completion.content.trim()) {
       throw new Error('AI provider returned an empty response');
     }
 
-    return res.json({
-      reply: completion.content.trim(),
-      search: searchCriteria
-        ? { departure: searchCriteria.departure, arrival: searchCriteria.arrival }
-        : null,
-    });
+    sendEvent(res, 'done', { search: searchCriteria });
+    res.end();
   } catch (error) {
+    if (controller.signal.aborted || res.destroyed) return;
     console.error('Trip assistant request failed:', error.message);
-    return res.status(502).json({ error: 'The AI trip planner is temporarily unavailable. Please try again shortly.' });
+    if (!res.headersSent) {
+      return res.status(502).json({ error: 'The AI trip planner is temporarily unavailable. Please try again shortly.' });
+    }
+    sendEvent(res, 'error', { error: 'The AI trip planner is temporarily unavailable. Please try again shortly.' });
+    res.end();
+  } finally {
+    clearInterval(heartbeat);
+    res.off('close', onResponseClose);
   }
 });
 
