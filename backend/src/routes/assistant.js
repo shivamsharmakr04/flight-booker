@@ -7,6 +7,27 @@ const MAX_MESSAGE_LENGTH = 1000;
 const MAX_MESSAGES = 10;
 const PROVIDER_TIMEOUT_MS = 30000;
 
+class ProviderRequestError extends Error {
+  constructor(status, code) {
+    super('AI provider request failed');
+    this.status = status;
+    this.code = code;
+  }
+}
+
+function providerErrorMessage(error) {
+  if (error instanceof ProviderRequestError && error.status === 429) {
+    if (error.code === 'insufficient_quota' || error.code === 'billing_hard_limit_reached') {
+      return 'The OpenAI API key or project has no available quota. Check its billing, credits, and usage limits, then restart the backend after updating OPENAI_API_KEY if needed.';
+    }
+    return 'The OpenAI API rate limit was reached. Wait a minute and try again. If this continues, check the project rate limits.';
+  }
+  if (error instanceof ProviderRequestError && error.status === 401) {
+    return 'OpenAI rejected the API key. Check that OPENAI_API_KEY in backend/.env is valid for the selected project, then restart the backend.';
+  }
+  return 'The AI trip planner is temporarily unavailable. Please try again shortly.';
+}
+
 const tools = [{
   type: 'function',
   function: {
@@ -94,8 +115,16 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
     });
 
     if (!response.ok) {
-      console.error(`OpenAI request failed with status ${response.status}`);
-      throw new Error('AI provider request failed');
+      let code;
+      try {
+        const body = await response.json();
+        if (typeof body.error?.code === 'string') code = body.error.code;
+        else if (typeof body.error?.type === 'string') code = body.error.type;
+      } catch {
+        // Provider error bodies are not guaranteed to be JSON.
+      }
+      console.error(`OpenAI request failed with status ${response.status}${code ? ` (${code})` : ''}`);
+      throw new ProviderRequestError(response.status, code);
     }
     if (!response.body) throw new Error('AI provider returned no response stream');
 
@@ -296,10 +325,11 @@ router.post('/chat/stream', async (req, res) => {
   } catch (error) {
     if (controller.signal.aborted || res.destroyed) return;
     console.error('Trip assistant request failed:', error.message);
+    const message = providerErrorMessage(error);
     if (!res.headersSent) {
-      return res.status(502).json({ error: 'The AI trip planner is temporarily unavailable. Please try again shortly.' });
+      return res.status(error instanceof ProviderRequestError ? error.status : 502).json({ error: message });
     }
-    sendEvent(res, 'error', { error: 'The AI trip planner is temporarily unavailable. Please try again shortly.' });
+    sendEvent(res, 'error', { error: message });
     res.end();
   } finally {
     clearInterval(heartbeat);

@@ -114,6 +114,48 @@ test('streams assistant tokens as server-sent events', async () => {
   }
 });
 
+test('explains when OpenAI rejects requests because the project has no quota', async () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.OPENAI_API_KEY = 'test-key';
+  global.fetch = async () => new Response(JSON.stringify({
+    error: { code: 'insufficient_quota', type: 'insufficient_quota' },
+  }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    const response = await postChat([{ role: 'user', content: 'Hello' }]);
+    assert.equal(response.status, 200);
+    assert.match(response.body, /event: error/);
+    assert.match(response.body, /no available quota/);
+    assert.match(response.body, /billing, credits, and usage limits/);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  }
+});
+
+test('suggests waiting when OpenAI returns a temporary rate limit', async () => {
+  const originalKey = process.env.OPENAI_API_KEY;
+  const originalFetch = global.fetch;
+  process.env.OPENAI_API_KEY = 'test-key';
+  global.fetch = async () => new Response(JSON.stringify({
+    error: { code: 'rate_limit_exceeded', type: 'rate_limit_error' },
+  }), { status: 429, headers: { 'Content-Type': 'application/json' } });
+
+  try {
+    const response = await postChat([{ role: 'user', content: 'Hello' }]);
+    assert.equal(response.status, 200);
+    assert.match(response.body, /event: error/);
+    assert.match(response.body, /rate limit was reached/);
+    assert.match(response.body, /Wait a minute and try again/);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalKey === undefined) delete process.env.OPENAI_API_KEY;
+    else process.env.OPENAI_API_KEY = originalKey;
+  }
+});
+
 test('searches inventory before streaming route recommendations', async () => {
   const originalKey = process.env.OPENAI_API_KEY;
   const originalFetch = global.fetch;
