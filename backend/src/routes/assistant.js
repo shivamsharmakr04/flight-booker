@@ -31,7 +31,7 @@ function providerErrorMessage(error) {
     return 'Google Gemini denied this request. Check the API key restrictions and make sure the Generative Language API is enabled for its Google Cloud project.';
   }
   if (error instanceof ProviderRequestError && error.status === 404) {
-    return `Gemini model "${error.model}" was not found. Set GEMINI_MODEL in backend/.env to a model enabled for your API key, such as gemini-2.5-flash, then restart the backend.`;
+    return `Gemini could not find or access model "${error.model}". Set GEMINI_MODEL in backend/.env to a model available to your Google AI Studio project, such as gemini-3.8-flash, and make sure the Generative Language API is enabled.`;
   }
   return 'The AI trip planner is temporarily unavailable. Please try again shortly.';
 }
@@ -102,7 +102,7 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
   signal.addEventListener('abort', abortRequest, { once: true });
   if (signal.aborted) abortRequest();
   try {
-    const configuredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+    const configuredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
     const model = configuredModel.replace(/^models\//, '').replace(/\/+$/, '');
     if (!model) throw new Error('GEMINI_MODEL must contain a Gemini model ID.');
     const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {

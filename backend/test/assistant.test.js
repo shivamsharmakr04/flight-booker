@@ -94,7 +94,7 @@ test('streams Gemini response tokens as server-sent events', async () => {
     const response = await postChat([{ role: 'user', content: 'Hello' }]);
     assert.equal(response.status, 200);
     assert.match(response.headers['content-type'], /text\/event-stream/);
-    assert.match(providerUrl, /models\/gemini-2\.5-flash:streamGenerateContent\?alt=sse/);
+    assert.match(providerUrl, /models\/gemini-3\.8-flash:streamGenerateContent\?alt=sse/);
     assert.equal(providerRequest.systemInstruction.parts[0].text.includes('trip-planning assistant'), true);
     assert.equal(providerRequest.contents[0].role, 'user');
     assert.deepEqual(providerRequest.tools[0].functionDeclarations[0].name, 'search_flights');
@@ -148,8 +148,8 @@ test('includes the unavailable Gemini model ID in the error', async () => {
     const response = await postChat([{ role: 'user', content: 'Hello' }]);
     assert.equal(response.status, 200);
     const errorData = JSON.parse(response.body.match(/data: (.+)/)[1]);
-    assert.match(errorData.error, /Gemini model "gemini-not-available" was not found/);
-    assert.match(errorData.error, /gemini-2\.5-flash/);
+    assert.match(errorData.error, /Gemini could not find or access model "gemini-not-available"/);
+    assert.match(errorData.error, /gemini-3\.8-flash/);
   } finally {
     global.fetch = originalFetch;
     if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
