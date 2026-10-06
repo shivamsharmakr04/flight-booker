@@ -1,11 +1,17 @@
 {
-  "name": "flight-frontend",
+  "name": "flight-booking-platform",
   "version": "1.0.0",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "install:all": "npm install && npm --prefix backend install",
+    "backend:install": "npm --prefix backend install",
+    "backend:start": "npm --prefix backend start",
+    "backend:dev": "npm --prefix backend run dev",
+    "backend:seed": "npm --prefix backend run seed",
+    "backend:test": "npm --prefix backend test"
   },
   "dependencies": {
     "axios": "^1.4.0",

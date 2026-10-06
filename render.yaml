@@ -1,0 +1,50 @@
+services:
+  # -------------------------------------------------------------
+  # Flight Booking Backend API Service
+  # -------------------------------------------------------------
+  - type: web
+    name: flight-booking-backend
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash-lite
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: flight-booking-frontend
+          property: host
+
+  # -------------------------------------------------------------
+  # Flight Booking Frontend Static Site
+  # -------------------------------------------------------------
+  - type: web
+    name: flight-booking-frontend
+    runtime: static
+    plan: free
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        fromService:
+          type: web
+          name: flight-booking-backend
+          property: host
