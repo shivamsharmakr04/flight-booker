@@ -11,6 +11,7 @@ test('explains how to fix MongoDB authentication failures without logging the UR
   assert.match(message, /database user credentials/);
   assert.match(message, /URL-encode/);
   assert.match(message, /target database/);
+  assert.match(message, /authSource=admin/);
   assert.doesNotMatch(message, /bad auth/);
 });
 
