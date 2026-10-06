@@ -17,9 +17,12 @@ The repository includes a ready-to-use [`render.yaml`](./render.yaml) blueprint 
    - **`flight-booking-backend`** (Node.js Web Service)
    - **`flight-booking-frontend`** (Static Site with SPA rewrite rules)
 6. Supply the required environment variables when prompted:
-   - `MONGO_URI`: Your MongoDB connection string (e.g., from [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)).
+   - `MONGO_URI`: Your reachable MongoDB connection string (e.g., from [MongoDB Atlas](https://www.mongodb.com/cloud/atlas)). Do not use `localhost` or `127.0.0.1` on Render.
    - `GEMINI_API_KEY`: Your Google Gemini API Key from [Google AI Studio](https://aistudio.google.com/).
-7. Click **Apply**. Render will build and deploy both services!
+7. Make sure the MongoDB network access list allows connections from Render. Render outbound addresses may change; use an appropriate Atlas network access rule and protect access with a strong database password.
+8. Click **Apply**. Render will build and deploy both services!
+
+The Blueprint generates `JWT_SECRET` automatically. If the backend logs report `ECONNREFUSED ::1:27017`, it is trying to connect to a local MongoDB instance inside the Render container. Set the backend service's `MONGO_URI` environment variable to your hosted database URI, save it, and redeploy.
 
 ---
 
@@ -48,6 +51,8 @@ If you prefer to create the services individually in the Render dashboard:
    | `GEMINI_MODEL` | `gemini-3.5-flash-lite` | Ultra-fast responses |
    | `FRONTEND_URL` | `https://your-frontend.onrender.com` | Your frontend URL |
 5. Click **Create Web Service**. Note down the assigned URL (e.g. `https://flight-booking-backend.onrender.com`).
+
+Create a hosted MongoDB database before deploying the backend and set `MONGO_URI` to its connection string. Do not leave it blank or set it to `mongodb://localhost:27017/flightdb`; Render does not run MongoDB in the backend service container. The Blueprint creates `JWT_SECRET` automatically, while a manually configured service needs a long, randomly generated value for it.
 
 ---
 

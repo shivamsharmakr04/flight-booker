@@ -2,9 +2,9 @@ require('dotenv').config();
 const app = require('./app');
 const mongoose = require('mongoose');
 const Flight = require('./models/Flight');
+const getMongoUri = require('./utils/mongoUri');
 
 const PORT = process.env.PORT || 4000;
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/flightdb';
 
 const defaultSeedFlights = [
   { flight_id: 'XG101', airline: 'AirX', departure_city: 'Delhi', arrival_city: 'Mumbai', base_price: 2200 },
@@ -36,14 +36,21 @@ async function autoSeedIfEmpty() {
   }
 }
 
-mongoose.connect(MONGO_URI)
-  .then(async () => {
-    console.log('MongoDB connected successfully');
-    await autoSeedIfEmpty();
-    app.listen(PORT, '0.0.0.0', () => {
-      console.log(`Server listening on 0.0.0.0:${PORT}`);
-    });
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err.message);
+async function startServer() {
+  if (!process.env.JWT_SECRET?.trim()) {
+    throw new Error('JWT_SECRET is required. Configure a long, random secret before starting the backend.');
+  }
+
+  await mongoose.connect(getMongoUri(), { serverSelectionTimeoutMS: 10000 });
+  console.log('MongoDB connected successfully');
+  await autoSeedIfEmpty();
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server listening on 0.0.0.0:${PORT}`);
   });
+}
+
+startServer().catch(async (err) => {
+  console.error('Application startup failed:', err.message);
+  process.exitCode = 1;
+  await mongoose.disconnect();
+});

@@ -1,8 +1,7 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Flight = require('./models/Flight');
-
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/flightdb';
+const getMongoUri = require('./utils/mongoUri');
 
 const seedFlights = [
   { flight_id: 'XG101', airline: 'AirX', departure_city: 'Delhi', arrival_city: 'Mumbai', base_price: 2200 },
@@ -19,7 +18,7 @@ const seedFlights = [
   { flight_id: 'IN708', airline: 'IndiJet', departure_city: 'Lucknow', arrival_city: 'Varanasi', base_price: 2350 }
 ];
 
-mongoose.connect(MONGO_URI).then(async () => {
+mongoose.connect(getMongoUri()).then(async () => {
   console.log('Connected to MongoDB for seeding');
   await Flight.deleteMany({});
   for (const f of seedFlights) {

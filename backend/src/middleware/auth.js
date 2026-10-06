@@ -5,7 +5,9 @@ module.exports = (req, res, next) => {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const secret = process.env.JWT_SECRET || 'supersecret_flight_jwt_key_2026';
+    const secret = process.env.JWT_SECRET?.trim();
+    if (!secret) return res.status(500).json({ error: 'Authentication is not configured' });
+
     req.user = jwt.verify(token, secret);
     next();
   } catch {

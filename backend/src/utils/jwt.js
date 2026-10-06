@@ -1,7 +1,11 @@
 const jwt = require('jsonwebtoken');
 
 exports.signToken = (user) => {
-  const secret = process.env.JWT_SECRET || 'supersecret_flight_jwt_key_2026';
+  const secret = process.env.JWT_SECRET?.trim();
+  if (!secret) {
+    throw new Error('JWT_SECRET must be configured before signing tokens.');
+  }
+
   return jwt.sign(
     { id: user._id, email: user.email },
     secret,

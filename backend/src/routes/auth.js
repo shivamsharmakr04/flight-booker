@@ -3,7 +3,6 @@ const bcrypt = require('bcrypt');
 const router = express.Router();
 const User = require('../models/User');
 const { signToken } = require('../utils/jwt');
-console.log('JWT_SECRET:', process.env.JWT_SECRET || '(using fallback)');
 
 /* REGISTER */
 router.post('/register', async (req, res) => {
