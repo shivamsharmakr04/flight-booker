@@ -24,6 +24,8 @@ The repository includes a ready-to-use [`render.yaml`](./render.yaml) blueprint 
 
 The Blueprint generates `JWT_SECRET` automatically. If the backend logs report `ECONNREFUSED ::1:27017`, it is trying to connect to a local MongoDB instance inside the Render container. Set the backend service's `MONGO_URI` environment variable to your hosted database URI, save it, and redeploy.
 
+If the backend reports `bad auth` or `authentication failed`, MongoDB is reachable but rejected the username or password in `MONGO_URI`. In Render, open the backend service's **Environment** settings and update `MONGO_URI` with the database user's credentials (not the MongoDB Atlas website login). In Atlas, verify that this user exists and has read/write access to the database used by this app. Replace all URI placeholders, and percent-encode special characters in the username or password (for example, `@` as `%40`, `:` as `%3A`, and `/` as `%2F`). Save the variable and redeploy. Do not post the connection string or password in logs, issues, or chat.
+
 ---
 
 ## 🛠️ Method 2: Manual Dashboard Setup

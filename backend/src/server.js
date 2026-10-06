@@ -3,6 +3,7 @@ const app = require('./app');
 const mongoose = require('mongoose');
 const Flight = require('./models/Flight');
 const getMongoUri = require('./utils/mongoUri');
+const getMongoConnectionErrorMessage = require('./utils/mongoConnectionError');
 
 const PORT = process.env.PORT || 4000;
 
@@ -50,7 +51,7 @@ async function startServer() {
 }
 
 startServer().catch(async (err) => {
-  console.error('Application startup failed:', err.message);
+  console.error('Application startup failed:', getMongoConnectionErrorMessage(err));
   process.exitCode = 1;
   await mongoose.disconnect();
 });
