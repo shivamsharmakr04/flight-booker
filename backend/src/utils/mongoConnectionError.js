@@ -13,6 +13,24 @@ function getMongoConnectionErrorMessage(error) {
     ].join(' ');
   }
 
+  if (/URI must include hostname, domain name, and tld/i.test(error?.message || '')) {
+    return [
+      'MongoDB rejected the mongodb+srv hostname as incomplete or invalid.',
+      'Set MONGO_URI to the full Atlas connection string from Atlas Connect, including the complete cluster hostname.',
+      'Replace every placeholder with its real value; do not include angle brackets or omit the cluster domain.',
+      'The connection string was not logged.',
+    ].join(' ');
+  }
+
+  if (/server selection timed out|ETIMEDOUT|connection timed out/i.test(error?.message || '')) {
+    return [
+      'Could not reach the MongoDB Atlas cluster before the connection timed out.',
+      'Verify Atlas Network Access allows connections from this Render service,',
+      'the cluster is available, and the Render service can make outbound connections to Atlas.',
+      'The connection string was not logged.',
+    ].join(' ');
+  }
+
   return `MongoDB connection error: ${error?.message || 'Unknown connection error'}`;
 }
 

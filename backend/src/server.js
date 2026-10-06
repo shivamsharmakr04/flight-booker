@@ -2,7 +2,7 @@ require('dotenv').config();
 const app = require('./app');
 const mongoose = require('mongoose');
 const Flight = require('./models/Flight');
-const getMongoUri = require('./utils/mongoUri');
+const connectMongo = require('./utils/connectMongo');
 const getMongoConnectionErrorMessage = require('./utils/mongoConnectionError');
 
 const PORT = process.env.PORT || 4000;
@@ -23,17 +23,13 @@ const defaultSeedFlights = [
 ];
 
 async function autoSeedIfEmpty() {
-  try {
-    const count = await Flight.countDocuments();
-    if (count === 0) {
-      console.log('No flights in database. Auto-seeding initial flight inventory...');
-      for (const f of defaultSeedFlights) {
-        await Flight.create({ ...f, current_price: f.base_price });
-      }
-      console.log('Auto-seed completed successfully.');
+  const count = await Flight.countDocuments();
+  if (count === 0) {
+    console.log('No flights in database. Auto-seeding initial flight inventory...');
+    for (const f of defaultSeedFlights) {
+      await Flight.create({ ...f, current_price: f.base_price });
     }
-  } catch (err) {
-    console.warn('Auto-seed check error:', err.message);
+    console.log('Auto-seed completed successfully.');
   }
 }
 
@@ -42,7 +38,7 @@ async function startServer() {
     throw new Error('JWT_SECRET is required. Configure a long, random secret before starting the backend.');
   }
 
-  await mongoose.connect(getMongoUri(), { serverSelectionTimeoutMS: 10000 });
+  await connectMongo();
   console.log('MongoDB connected successfully');
   await autoSeedIfEmpty();
   app.listen(PORT, '0.0.0.0', () => {

@@ -1,7 +1,8 @@
 require('dotenv').config();
 const mongoose = require('mongoose');
 const Flight = require('./models/Flight');
-const getMongoUri = require('./utils/mongoUri');
+const connectMongo = require('./utils/connectMongo');
+const getMongoConnectionErrorMessage = require('./utils/mongoConnectionError');
 
 const seedFlights = [
   { flight_id: 'XG101', airline: 'AirX', departure_city: 'Delhi', arrival_city: 'Mumbai', base_price: 2200 },
@@ -18,7 +19,7 @@ const seedFlights = [
   { flight_id: 'IN708', airline: 'IndiJet', departure_city: 'Lucknow', arrival_city: 'Varanasi', base_price: 2350 }
 ];
 
-mongoose.connect(getMongoUri()).then(async () => {
+connectMongo().then(async () => {
   console.log('Connected to MongoDB for seeding');
   await Flight.deleteMany({});
   for (const f of seedFlights) {
@@ -30,7 +31,8 @@ mongoose.connect(getMongoUri()).then(async () => {
   }
   console.log('Seeding complete');
   process.exit(0);
-}).catch(err => {
-  console.error(err);
-  process.exit(1);
+}).catch(async (err) => {
+  console.error('Flight seeding failed:', getMongoConnectionErrorMessage(err));
+  await mongoose.disconnect();
+  process.exitCode = 1;
 });

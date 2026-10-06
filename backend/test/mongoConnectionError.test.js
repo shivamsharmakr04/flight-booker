@@ -21,3 +21,23 @@ test('preserves useful details for non-authentication connection failures', () =
     'MongoDB connection error: ENOTFOUND cluster.example.mongodb.net',
   );
 });
+
+test('gives safe instructions for incomplete mongodb+srv hostnames', () => {
+  const message = getMongoConnectionErrorMessage({
+    message: 'URI must include hostname, domain name, and tld',
+  });
+
+  assert.match(message, /full Atlas connection string/);
+  assert.match(message, /Replace every placeholder/);
+  assert.doesNotMatch(message, /mongodb\+srv:\/\/.*@/);
+});
+
+test('suggests Atlas network checks when the server selection times out', () => {
+  const message = getMongoConnectionErrorMessage({
+    name: 'MongooseServerSelectionError',
+    message: 'Server selection timed out after 10000 ms',
+  });
+
+  assert.match(message, /Atlas Network Access/);
+  assert.match(message, /outbound connections/);
+});

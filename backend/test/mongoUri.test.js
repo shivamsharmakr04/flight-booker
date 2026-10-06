@@ -49,3 +49,33 @@ test('accepts a hosted MongoDB URI in production', () => {
     assert.equal(getMongoUri(), hostedUri);
   });
 });
+
+test('encodes extra raw at signs in MongoDB credentials before the host', () => {
+  const uri = 'mongodb+srv://flight-user:pass@word$secure@example.mongodb.net/flightdb';
+  withEnvironment({ NODE_ENV: 'production', MONGO_URI: uri }, () => {
+    const normalizedUri = getMongoUri();
+    const parsedUri = new URL(normalizedUri);
+
+    assert.equal(parsedUri.hostname, 'example.mongodb.net');
+    assert.equal(decodeURIComponent(parsedUri.password), 'pass@word$secure');
+    assert.match(parsedUri.password, /%24/i);
+  });
+});
+
+test('rejects a mongodb+srv URI with an incomplete hostname', () => {
+  withEnvironment({
+    NODE_ENV: 'production',
+    MONGO_URI: 'mongodb+srv://user:password@cluster/flightdb',
+  }, () => {
+    assert.throws(getMongoUri, /invalid mongodb\+srv hostname/);
+  });
+});
+
+test('rejects unsupported MongoDB URI schemes', () => {
+  withEnvironment({
+    NODE_ENV: 'production',
+    MONGO_URI: 'https://db.example.mongodb.net/flightdb',
+  }, () => {
+    assert.throws(getMongoUri, /must start with mongodb:\/\//);
+  });
+});
