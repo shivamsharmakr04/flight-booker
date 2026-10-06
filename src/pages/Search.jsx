@@ -39,10 +39,12 @@ export default function Search({ user, setUser }) {
 
   const [selectedFlight, setSelectedFlight] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
 
   useEffect(() => {
     if (searchParams.get('assistant') === '1') {
+      setAssistantOpen(true);
       setSearchParams((params) => {
         params.delete('assistant');
         return params;
@@ -464,7 +466,8 @@ export default function Search({ user, setUser }) {
 
       <TripAssistant
         onSearch={applyAssistantSearch}
-        openOnMount={searchParams.get('assistant') === '1'}
+        isOpen={assistantOpen}
+        onToggle={setAssistantOpen}
       />
     </div>
   );

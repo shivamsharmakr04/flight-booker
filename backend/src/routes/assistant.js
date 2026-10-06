@@ -24,6 +24,9 @@ function providerErrorMessage(error) {
     }
     return 'The Gemini API rate limit was reached. Wait a minute and try again. If this continues, check the project rate limits in Google AI Studio.';
   }
+  if (error instanceof ProviderRequestError && error.status === 503) {
+    return 'The AI service is currently experiencing high demand. Please try again in a moment.';
+  }
   if (error instanceof ProviderRequestError && error.status === 401) {
     return 'Google Gemini rejected the API key. Check that GEMINI_API_KEY in backend/.env is valid and that the Generative Language API is enabled.';
   }
@@ -90,6 +93,8 @@ function normalizeSearchArguments(value) {
   };
 }
 
+const FALLBACK_MODELS = ['gemini-3.5-flash-lite', 'gemini-flash-lite-latest', 'gemini-3.5-flash'];
+
 async function createCompletion(messages, apiKey, { signal, onToken }) {
   const requestController = new AbortController();
   const abortRequest = () => requestController.abort(signal.reason);
@@ -101,114 +106,147 @@ async function createCompletion(messages, apiKey, { signal, onToken }) {
   let finished = false;
   signal.addEventListener('abort', abortRequest, { once: true });
   if (signal.aborted) abortRequest();
+
   try {
     const configuredModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.8-flash';
-    const model = configuredModel.replace(/^models\//, '').replace(/\/+$/, '');
-    if (!model) throw new Error('GEMINI_MODEL must contain a Gemini model ID.');
-    const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-      method: 'POST',
-      headers: {
-        'x-goog-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: messages[0].content }] },
-        contents: messages.slice(1).map((message) => {
-          if (message.role === 'assistant' && message.parts) {
-            return { role: 'model', parts: message.parts };
-          }
-          if (message.role === 'tool') {
-            return { role: 'user', parts: [{ functionResponse: JSON.parse(message.content).functionResponse }] };
-          }
-          return {
-            role: message.role === 'assistant' ? 'model' : 'user',
-            parts: [{ text: message.content }],
-          };
-        }),
-        tools,
-        generationConfig: { maxOutputTokens: 500 },
-      }),
-      signal: requestController.signal,
-    });
+    const primaryModel = configuredModel.replace(/^models\//, '').replace(/\/+$/, '');
+    if (!primaryModel) throw new Error('GEMINI_MODEL must contain a Gemini model ID.');
 
-    if (!response.ok) {
-      let code;
-      let message;
-      try {
-        const body = await response.json();
-        if (typeof body.error?.status === 'string') code = body.error.status;
-        else if (typeof body.error?.code === 'number') code = String(body.error.code);
-        if (typeof body.error?.message === 'string') message = body.error.message;
-      } catch {
-        // Provider error bodies are not guaranteed to be JSON.
-      }
-      console.error(`Gemini request failed with status ${response.status}${code ? ` (${code})` : ''}`);
-      throw new ProviderRequestError(response.status, code, message, model);
+    const modelsToTry = [primaryModel];
+    for (const fb of FALLBACK_MODELS) {
+      if (!modelsToTry.includes(fb)) modelsToTry.push(fb);
     }
-    if (!response.body) throw new Error('AI provider returned no response stream');
 
-    const completion = { role: 'model', parts: [], content: '', functionCall: null };
-    reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
+    for (let i = 0; i < modelsToTry.length; i++) {
+      const model = modelsToTry[i];
+      try {
+        const response = await fetch(`${GEMINI_API_URL}/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+          method: 'POST',
+          headers: {
+            'x-goog-api-key': apiKey,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: messages[0].content }] },
+            contents: messages.slice(1).map((message) => {
+              if (message.role === 'assistant' && message.parts) {
+                return { role: 'model', parts: message.parts };
+              }
+              if (message.role === 'tool') {
+                return { role: 'user', parts: [{ functionResponse: JSON.parse(message.content).functionResponse }] };
+              }
+              return {
+                role: message.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: message.content }],
+              };
+            }),
+            tools,
+            generationConfig: {
+              maxOutputTokens: 350,
+              temperature: 0.2,
+            },
+          }),
+          signal: requestController.signal,
+        });
 
-    function processEvent(eventText) {
-      const data = eventText
-        .split(/\r?\n/)
-        .filter((line) => line.startsWith('data:'))
-        .map((line) => line.slice(5).trimStart())
-        .join('\n');
-
-      if (!data) return;
-
-      const chunk = JSON.parse(data);
-      if (chunk.error) throw new Error('AI provider returned a stream error');
-
-      for (const candidate of chunk.candidates || []) {
-        for (const part of candidate.content?.parts || []) {
-          completion.parts.push(part);
-          if (typeof part.text === 'string') {
-            completion.content += part.text;
-            onToken(part.text);
+        if (!response.ok) {
+          let code;
+          let message;
+          try {
+            const body = await response.json();
+            if (typeof body.error?.status === 'string') code = body.error.status;
+            else if (typeof body.error?.code === 'number') code = String(body.error.code);
+            if (typeof body.error?.message === 'string') message = body.error.message;
+          } catch {
+            // Provider error bodies are not guaranteed to be JSON.
           }
-          if (part.functionCall) {
-            if (completion.functionCall && completion.functionCall.name !== part.functionCall.name) {
-              throw new Error('AI provider returned an unsupported function call');
+          console.error(`Gemini request failed with status ${response.status}${code ? ` (${code})` : ''}`);
+
+          // If model is overloaded (503) and we have fallback models left, try the next fast model!
+          if (response.status === 503 && i < modelsToTry.length - 1) {
+            console.warn(`Model "${model}" returned 503 (high demand). Retrying with fallback model "${modelsToTry[i + 1]}"...`);
+            continue;
+          }
+
+          throw new ProviderRequestError(response.status, code, message, model);
+        }
+        if (!response.body) throw new Error('AI provider returned no response stream');
+
+        const completion = { role: 'model', parts: [], content: '', functionCall: null };
+        reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function processEvent(eventText) {
+          const data = eventText
+            .split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart())
+            .join('\n');
+
+          if (!data) return;
+
+          const chunk = JSON.parse(data);
+          if (chunk.error) throw new Error('AI provider returned a stream error');
+
+          for (const candidate of chunk.candidates || []) {
+            for (const part of candidate.content?.parts || []) {
+              completion.parts.push(part);
+              if (typeof part.text === 'string' && part.text) {
+                completion.content += part.text;
+                onToken(part.text);
+              }
+              if (part.functionCall) {
+                if (completion.functionCall && completion.functionCall.name !== part.functionCall.name) {
+                  throw new Error('AI provider returned an unsupported function call');
+                }
+                completion.functionCall = {
+                  name: part.functionCall.name,
+                  args: { ...(completion.functionCall?.args || {}), ...(part.functionCall.args || {}) },
+                };
+              }
             }
-            completion.functionCall = {
-              name: part.functionCall.name,
-              args: { ...(completion.functionCall?.args || {}), ...(part.functionCall.args || {}) },
-            };
+            if (candidate.finishReason) finished = true;
           }
         }
-        if (candidate.finishReason) finished = true;
+
+        while (!finished) {
+          if (requestController.signal.aborted) {
+            throw requestController.signal.reason || new Error('Request aborted');
+          }
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          let boundary = buffer.search(/\r?\n\r?\n/);
+          while (boundary !== -1) {
+            const eventText = buffer.slice(0, boundary);
+            const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];
+            buffer = buffer.slice(boundary + separator.length);
+            processEvent(eventText);
+            if (finished) break;
+            boundary = buffer.search(/\r?\n\r?\n/);
+          }
+        }
+        buffer += decoder.decode();
+        if (!finished && buffer.trim()) processEvent(buffer);
+
+        if (!finished && (completion.content || completion.functionCall)) finished = true;
+        if (!finished) throw new Error('AI provider stream ended unexpectedly');
+        return completion;
+      } catch (err) {
+        if (reader) {
+          if (!finished) await reader.cancel().catch(() => {});
+          reader.releaseLock();
+          reader = null;
+        }
+        if (requestController.signal.aborted) throw err;
+        if (err instanceof ProviderRequestError && err.status === 503 && i < modelsToTry.length - 1) {
+          continue;
+        }
+        throw err;
       }
     }
-
-    while (!finished) {
-      if (requestController.signal.aborted) {
-        throw requestController.signal.reason || new Error('Request aborted');
-      }
-      const { value, done } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      let boundary = buffer.search(/\r?\n\r?\n/);
-      while (boundary !== -1) {
-        const eventText = buffer.slice(0, boundary);
-        const separator = buffer.slice(boundary).match(/^\r?\n\r?\n/)[0];
-        buffer = buffer.slice(boundary + separator.length);
-        processEvent(eventText);
-        if (finished) break;
-        boundary = buffer.search(/\r?\n\r?\n/);
-      }
-    }
-    buffer += decoder.decode();
-    if (!finished && buffer.trim()) processEvent(buffer);
-
-    if (!finished && (completion.content || completion.functionCall)) finished = true;
-    if (!finished) throw new Error('AI provider stream ended unexpectedly');
-    return completion;
   } finally {
     clearTimeout(timeout);
     signal.removeEventListener('abort', abortRequest);
@@ -312,6 +350,7 @@ router.post('/chat/stream', async (req, res) => {
       }
 
       const criteria = normalizeSearchArguments(functionCall.args);
+      sendEvent(res, 'searching', criteria);
       const flights = await searchFlights(criteria);
       searchCriteria = { departure: criteria.departure, arrival: criteria.arrival };
       sendEvent(res, 'search', searchCriteria);
@@ -329,8 +368,6 @@ router.post('/chat/stream', async (req, res) => {
         signal: controller.signal,
         onToken: (text) => sendEvent(res, 'token', { text }),
       });
-    } else if (completion.content) {
-      sendEvent(res, 'token', { text: completion.content });
     }
 
     if (!completion.content.trim()) {

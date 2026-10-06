@@ -20,7 +20,7 @@ export async function searchFlights(params) {
   return res.data.flights;
 }
 
-export async function streamTripAssistant(messages, { signal, onToken, onSearch }) {
+export async function streamTripAssistant(messages, { signal, onToken, onSearch, onSearching }) {
   const token = localStorage.getItem('token');
   const response = await fetch(`${API_BASE_URL.replace(/\/+$/, '')}/assistant/chat/stream`, {
     method: 'POST',
@@ -62,6 +62,9 @@ export async function streamTripAssistant(messages, { signal, onToken, onSearch 
 
     const data = JSON.parse(dataLines.join('\n'));
     if (eventName === 'token' && typeof data.text === 'string') onToken(data.text);
+    if (eventName === 'searching') {
+      onSearching?.(data);
+    }
     if (eventName === 'search' && data.departure && data.arrival) {
       search = { departure: data.departure, arrival: data.arrival };
       onSearch?.(search);
